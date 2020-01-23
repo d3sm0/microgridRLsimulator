@@ -1,6 +1,7 @@
 from itertools import chain
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 
 class Forecaster:
@@ -18,13 +19,38 @@ class Forecaster:
         self.grid = simulator.grid
         self.control_horizon = control_horizon  # min(control_horizon, len(
         # self.date_range) - 1 - self.start_date_index)  # -1 because the end date is not part of the problem
-        self.forecast_date_range = list(sorted(set(chain(self.date_range,
-                                                         pd.date_range(start=self.date_range[-1],
-                                                                       periods=self.control_horizon,
-                                                                       freq=self.date_range.freq)))))
+        date_range = pd.date_range(start=self.date_range[-1], periods=self.control_horizon, freq=self.date_range.freq)
+        self.forecast_date_range = list(sorted(set(chain(self.date_range, date_range))))
         self.forecasted_PV_production = None
         self.forecasted_consumption = None
         self.deviation_factor = deviation_factor
+
+    def _forecast(self, env_step, noise_fn):
+
+        self.forecasted_PV_production = []
+        self.forecasted_consumption = []
+
+        for i in range(self.control_horizon):
+            non_flexible_production = 0
+            non_flexible_consumption = 0
+            next_step = env_step + i
+            for generator in self.grid.generators:
+                if not generator.steerable:
+                    time = next_step * self.grid.period_duration * 60
+                    updated_capacity = generator.find_capacity(time)
+                    # Assumption: the capacity update is not taken into account for optimization
+                    scale = (updated_capacity / generator.initial_capacity)
+                    next_production = self.database.get_columns(generator.name, self.forecast_date_range[next_step])
+                    non_flexible_production += scale * next_production
+
+            for load in self.grid.loads:
+                next_load = self.database.get_columns(load.name, self.forecast_date_range[next_step])
+                non_flexible_consumption += next_load
+
+            non_flexible_production, non_flexible_consumption = noise_fn(non_flexible_production,
+                                                                         non_flexible_consumption, i)
+            self.forecasted_PV_production.append(non_flexible_production)
+            self.forecasted_consumption.append(non_flexible_consumption)
 
     def exact_forecast(self, env_step):
         """
@@ -33,52 +59,10 @@ class Forecaster:
         Return nothing, fill the forecast lists.
         """
 
-        self.forecasted_PV_production = []
-        self.forecasted_consumption = []
+        def noise_fn(x, y, *args):
+            return x, y
 
-        for i in range(self.control_horizon):
-            non_flexible_production = 0
-            non_flexible_consumption = 0
-            for g in self.grid.generators:
-                if not g.steerable:
-                    time = (env_step + i) * self.grid.period_duration * 60
-                    updated_capacity = g.find_capacity(time)
-                    non_flexible_production += self.database.get_columns(g.name,
-                                                                         self.forecast_date_range[
-                                                                             env_step + i]) * (
-                                                       updated_capacity / g.initial_capacity)  # Assumption: the capacity update is not taken into account for optimization
-            for l in self.grid.loads:
-                non_flexible_consumption += self.database.get_columns(l.name,
-                                                                      self.forecast_date_range[env_step + i])
-            self.forecasted_PV_production.append(non_flexible_production)
-            self.forecasted_consumption.append(non_flexible_consumption)
-
-    def noisy_forecast2(self, env_step):
-        """
-        Make a noisy forecast of the future loads and PV production
-
-        Return nothing, fill the forecast lists.
-        """
-        self.forecasted_PV_production = []
-        self.forecasted_consumption = []
-
-        for i in range(self.control_horizon):
-            non_flexible_production = 0
-            non_flexible_consumption = 0
-            for g in self.grid.generators:
-                if not g.steerable:
-                    time = (env_step + i) * self.grid.period_duration * 60
-                    updated_capacity = g.find_capacity(time)
-                    non_flexible_production += self.database.get_columns(g.name,
-                                                                         self.forecast_date_range[
-                                                                             env_step + i]) * (
-                                                       updated_capacity / g.initial_capacity) + \
-                                               np.random.normal(scale=self.deviation)
-            for l in self.grid.loads:
-                non_flexible_consumption += self.database.get_columns(l.name,
-                                                                      self.forecast_date_range[env_step + i])
-            self.forecasted_PV_production.append(non_flexible_production)
-            self.forecasted_consumption.append(non_flexible_consumption)
+        self._forecast(env_step, noise_fn=noise_fn)
 
     def noisy_forecast(self, env_step):
         """
@@ -86,28 +70,20 @@ class Forecaster:
 
         Return nothing, fill the forecast lists.
         """
-        #This forecast has a variable noise with respect to the forecast step
-        self.forecasted_PV_production = []
-        self.forecasted_consumption = []
-        std_factor = np.linspace(.0, self.deviation_factor, num=self.control_horizon) # increasing from 0 at current step to deviation at final step
-        for i in range(self.control_horizon):
 
-            non_flexible_production = 0
-            non_flexible_consumption = 0
-            for g in self.grid.generators:
-                if not g.steerable:
-                    time = (env_step + i) * self.grid.period_duration * 60
-                    updated_capacity = g.find_capacity(time)
-                    non_flexible_production += self.database.get_columns(g.name,
-                                                                         self.forecast_date_range[
-                                                                             env_step + i]) * (
-                                                       updated_capacity / g.initial_capacity)
-            for l in self.grid.loads:
-                non_flexible_consumption += self.database.get_columns(l.name,
-                                                                      self.forecast_date_range[env_step + i])
-            self.forecasted_PV_production.append(abs(non_flexible_production + np.random.normal(scale = abs(std_factor[i] * non_flexible_production))))
+        # This forecast has a variable noise with respect to the forecast step
+        std_factor = np.linspace(.0, self.deviation_factor, num=self.control_horizon)
+
+        def noise_fn(production, consumption, time_step):
+            # increasing from 0 at current step to deviation at final step
+            noise = np.random.normal(scale=std_factor[time_step] * production)
+            production = min(0, production + noise)
             # std relative to the exact value => use of a deviation factor increasing from 0% to 20% at last step (can be modified)
-            self.forecasted_consumption.append(abs(non_flexible_consumption + np.random.normal(scale = abs(std_factor[i] * non_flexible_consumption))))
+            noise = np.random.normal(scale=std_factor[time_step] * consumption)
+            consumption = min(0, consumption + noise)
+            return production, consumption
+
+        self._forecast(env_step, noise_fn)
 
     def get_forecast(self):
         return [self.forecasted_consumption, self.forecasted_PV_production]

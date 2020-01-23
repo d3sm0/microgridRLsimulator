@@ -1,7 +1,6 @@
 from microgridRLsimulator.model.device import Device
-from microgridRLsimulator.simulate import simulator
 from microgridRLsimulator.utils import positive, TOL_IS_ZERO
-import numpy as np
+
 
 class Storage(Device):
     def __init__(self, name, params):
@@ -77,7 +76,7 @@ class Storage(Device):
         actual_charge, actual_discharge = self.actual_power(charge_action, discharge_action)
 
         if positive(actual_charge):
-            planned_evolution = initial_soc + actual_charge * deltat * self.charge_efficiency # TODO check action is an energy: action is a power 
+            planned_evolution = initial_soc + actual_charge * deltat * self.charge_efficiency # TODO check action is an energy: action is a power
             next_soc = min(self.capacity, planned_evolution)                                  # period duration used to modify it in an energy
             actual_charge = (next_soc - initial_soc) / (self.charge_efficiency * deltat)
         elif positive(actual_discharge):

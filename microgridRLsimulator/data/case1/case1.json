@@ -63,7 +63,7 @@
   "load_shedding_price":100,
   "period_duration": 60,
   "features": {"state_of_charge": true, "n_cycles": false, "capacities": false, "res_gen_capacities": false,
-    "non_steerable_consumption": true, "non_steerable_production": true,"delta_h": true},
+    "non_steerable_consumption": true, "non_steerable_production": true,"delta_h": false},
   "action_space": "Discrete",
   "backcast_steps": 1,
   "forecast_steps" : 2,

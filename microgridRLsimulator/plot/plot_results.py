@@ -1,11 +1,11 @@
+import json
 import os
-import string
-from datetime import datetime, timedelta
+import sys
+from datetime import datetime
+
 import matplotlib.pyplot as plt
 # import mpld3
 import numpy as np
-import json
-import sys
 
 plt.style.use('bmh')
 

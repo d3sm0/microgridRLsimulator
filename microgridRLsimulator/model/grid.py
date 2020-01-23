@@ -1,8 +1,8 @@
-from .load import Load
-from .storage import Storage
-from .DCAstorage import DCAStorage
+from microgridRLsimulator.model.load import Load
+from microgridRLsimulator.model.storage import Storage
+from microgridRLsimulator.model.DCAstorage import DCAStorage
 
-from .generator import Generator
+from microgridRLsimulator.model.generator import Generator
 
 
 class Grid:

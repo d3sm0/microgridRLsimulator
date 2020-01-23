@@ -1,4 +1,4 @@
-from .device import Device
+from microgridRLsimulator.model.device import Device
 
 
 class Generator(Device):

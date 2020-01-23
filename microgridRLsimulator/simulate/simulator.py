@@ -1,24 +1,24 @@
 # -*- coding: utf-8 -*-
-
-import pandas as pd
-import json
-from datetime import datetime
-import os
+import collections
 import itertools
-from datetime import timedelta
-from dateutil.parser import isoparse
+import json
+import os
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
 
 from microgridRLsimulator.history import Database
-from microgridRLsimulator.simulate.gridstate import GridState
 from microgridRLsimulator.model.grid import Grid
-from microgridRLsimulator.simulate.gridaction import GridAction
 from microgridRLsimulator.plot import Plotter
-from microgridRLsimulator.utils import positive, negative, decode_GridState
 from microgridRLsimulator.simulate.forecaster import Forecaster
+from microgridRLsimulator.simulate.gridaction import GridAction
+from microgridRLsimulator.simulate.gridstate import GridState
+from microgridRLsimulator.utils import positive, negative, decode_GridState, CastList
 
 
 class Simulator:
-    def __init__(self, start_date, end_date, case):
+    def __init__(self, start_date, end_date, case, params=None):
         """
         :param start_date: datetime for the start of the simulation
         :param end_date: datetime for the end of the simulation
@@ -37,8 +37,12 @@ class Simulator:
 
         with open(MICROGRID_CONFIG_FILE, 'rb') as jsonFile:
             self.data = json.load(jsonFile)
-            self.grid = Grid(self.data)
-            self.objectives = self.data["objectives"]
+
+        if params is not None:
+            self.data.update(params)
+
+        self.grid = Grid(self.data)
+        self.objectives = self.data["objectives"]
 
         for k in self.objectives.values():
             assert isinstance(k, bool)
@@ -48,13 +52,11 @@ class Simulator:
         self.actions = {}
         # converting dates to datetime object
         if type(start_date) is str:
-            self.start_date = isoparse(start_date)
-        else:
-            self.start_date = start_date
+            start_date = pd.to_datetime(start_date)
+        self.start_date = start_date
         if type(end_date) is str:
-            self.end_date = isoparse(end_date)
-        else:
-            self.end_date = end_date
+            end_date = pd.to_datetime(end_date)
+        self.end_date = end_date
 
         data_start_date = self.database.data_frame.first_valid_index()
         data_end_date = self.database.data_frame.last_valid_index()
@@ -101,7 +103,7 @@ class Simulator:
         self.grid_states[-1].non_steerable_consumption = realized_non_flexible_consumption
         return self._decode_state([self.grid_states[-1]])
 
-    def step(self, high_level_action=None, low_level_action=None):
+    def step(self, action):
         """
         Method that can be called by an agent to create a transition of the system.
 
@@ -110,12 +112,11 @@ class Simulator:
         """
         dt = self.date_range[self.env_step]
         # Use the high level action provided and the current state to generate the low level actions for each component
-        if high_level_action is not None:
-            actions = self._construct_action(high_level_action)
-        # Or provide directly low level actions
-        elif low_level_action is not None:
-            actions = low_level_action if isinstance(low_level_action, GridAction) \
-                else self._construct_action_from_list(low_level_action)
+        if not isinstance(action, np.ndarray):
+            actions = self._construct_action(action)
+        else:
+            # Or provide directly low level actions
+            actions = action if isinstance(action, GridAction) else self._construct_action_from_list(action)
 
         # Record these actions in a json file
         self.actions[dt.strftime('%y/%m/%d_%H')] = actions.to_json()
@@ -240,25 +241,30 @@ class Simulator:
         :return: Nothing.
         """
 
-        results = dict(dates=["%s" % d.date_time for d in self.grid_states],
-                       soc=[d.state_of_charge for d in self.grid_states],
-                       capacity=[d.capacities for d in self.grid_states],
-                       res_gen_capacity=[d.res_gen_capacities for d in self.grid_states],
-                       charge=[d.charge for d in self.grid_states],
-                       discharge=[d.discharge for d in self.grid_states],
-                       generation=[d.generation for d in self.grid_states],
-                       fuel_cost=[d.fuel_cost for d in self.grid_states],
-                       curtailment_cost=[d.curtailment_cost for d in self.grid_states],
-                       load_not_served_cost=[d.load_not_served_cost for d in self.grid_states],
-                       energy_cost=[d.total_cost for d in self.grid_states],
-                       production=[d.production for d in self.grid_states],
-                       consumption=[d.consumption for d in self.grid_states],
-                       non_steerable_production=[d.non_steerable_production for d in self.grid_states],
-                       non_steerable_consumption=[d.non_steerable_consumption for d in self.grid_states],
-                       grid_import=[d.grid_import for d in self.grid_states],
-                       grid_export=[d.grid_export for d in self.grid_states],
-                       cum_total_cost=[d.cum_total_cost for d in self.grid_states],
-                       avg_rewards=learning_results)
+        if learning_results is None:
+            learning_results = [0]
+        results = collections.defaultdict(lambda: CastList())
+
+        for d in self.grid_states:
+            results['dates'].append("%s" % d.date_time)
+            results['soc'].append(d.state_of_charge)
+            results['capacity'].append(d.capacities)
+            results['res_gen_capacity'].append(d.res_gen_capacities)
+            results['charge'].append(d.charge)
+            results['discharge'].append(d.discharge)
+            results['generation'].append(d.generation)
+            results['fuel_cost'].append(d.fuel_cost)
+            results['curtailment_cost'].append(d.curtailment_cost)
+            results['load_not_served_cost'].append(d.load_not_served_cost)
+            results['energy_cost'].append(d.total_cost)
+            results['production'].append(d.production)
+            results['consumption'].append(d.consumption)
+            results['non_steerable_production'].append(d.non_steerable_production)
+            results['non_steerable_consumption'].append(d.non_steerable_consumption)
+            results['grid_import'].append(d.grid_import)
+            results['grid_export'].append(d.grid_export)
+            results['cum_total_cost'].append(d.cum_total_cost)
+        results['avg_rewards'].append(learning_results)
 
         if folder is not None:
             self.RESULTS_FOLDER = folder
@@ -266,14 +272,14 @@ class Simulator:
 
         if not os.path.isdir(self.RESULTS_FOLDER):
             os.makedirs(self.RESULTS_FOLDER)
-        
+
 
         with open(self.RESULTS_FILE, 'w') as jsonFile:
             json.dump(results, jsonFile)
 
         with open(self.RESULTS_FOLDER +"/mg_config.json", 'w') as jsonFile:
             json.dump(self.data, jsonFile)
-        
+
         if agent_options is not None:
             with open(self.RESULTS_FOLDER +"/agent_options.json", 'w') as jsonFile:
                 json.dump(agent_options, jsonFile)
@@ -310,7 +316,7 @@ class Simulator:
         if self.forecast_steps > 0:
             if self.forecast_type == "exact":
                 self.forecaster.exact_forecast(env_step=self.env_step)
-            elif self.forecast_type == "noisy": 
+            elif self.forecast_type == "noisy":
                 self.forecaster.noisy_forecast(env_step=self.env_step)
             state_list += self.forecaster.forecasted_consumption[1:]
             state_list += self.forecaster.forecasted_PV_production[1:]

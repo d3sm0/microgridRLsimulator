@@ -26,7 +26,7 @@
     {
       "name": "BSS_1",
       "type": "DCAStorage",
-      "capacity": 468.0,
+      "capacity": 120.0,
       "max_charge_rate": 97.0,
       "max_discharge_rate": 97.0,
       "charge_efficiency": 0.75,
@@ -41,8 +41,8 @@
     "curtailment": false,
     "storage_maintenance": false
   },
-  "curtailment_price": 10.5,
-  "load_shedding_price":100,
+  "curtailment_price": 1.5,
+  "load_shedding_price":10,
   "period_duration": 60,
   "features": {"state_of_charge": true, "n_cycles": false, "capacities": false, "res_gen_capacities": false,
       "non_steerable_consumption": true, "non_steerable_production": true,"delta_h": false},
