@@ -5,7 +5,6 @@ import json
 import os
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
 from microgridRLsimulator.history import Database
@@ -103,7 +102,7 @@ class Simulator:
         self.grid_states[-1].non_steerable_consumption = realized_non_flexible_consumption
         return self._decode_state([self.grid_states[-1]])
 
-    def step(self, action):
+    def step(self, actions):
         """
         Method that can be called by an agent to create a transition of the system.
 
@@ -112,11 +111,12 @@ class Simulator:
         """
         dt = self.date_range[self.env_step]
         # Use the high level action provided and the current state to generate the low level actions for each component
-        if not isinstance(action, np.ndarray):
-            actions = self._construct_action(action)
-        else:
-            # Or provide directly low level actions
-            actions = action if isinstance(action, GridAction) else self._construct_action_from_list(action)
+
+        if not isinstance(actions, GridAction):
+            if self.data['action_space'].lower() == "discrete":
+                actions = self._construct_action(actions)
+            else:
+                actions = self._construct_action_from_list(actions)
 
         # Record these actions in a json file
         self.actions[dt.strftime('%y/%m/%d_%H')] = actions.to_json()
@@ -230,7 +230,8 @@ class Simulator:
         next_grid_state.non_steerable_consumption = realized_non_flexible_consumption
         self.grid_states.append(next_grid_state)
         # Pass the information about the next state, cost of the previous control actions and termination condition
-        return self._decode_state(self.grid_states[-(self.backcast_steps + 1):]), self._compute_rewards(multiobj), is_terminal # +1 to take into account the current state
+        return self._decode_state(self.grid_states[-(self.backcast_steps + 1):]), self._compute_rewards(
+            multiobj), is_terminal  # +1 to take into account the current state
 
     def store_and_plot(self, folder=None, learning_results=None, agent_options=None):
         """
@@ -273,15 +274,14 @@ class Simulator:
         if not os.path.isdir(self.RESULTS_FOLDER):
             os.makedirs(self.RESULTS_FOLDER)
 
-
         with open(self.RESULTS_FILE, 'w') as jsonFile:
             json.dump(results, jsonFile)
 
-        with open(self.RESULTS_FOLDER +"/mg_config.json", 'w') as jsonFile:
+        with open(self.RESULTS_FOLDER + "/mg_config.json", 'w') as jsonFile:
             json.dump(self.data, jsonFile)
 
         if agent_options is not None:
-            with open(self.RESULTS_FOLDER +"/agent_options.json", 'w') as jsonFile:
+            with open(self.RESULTS_FOLDER + "/agent_options.json", 'w') as jsonFile:
                 json.dump(agent_options, jsonFile)
 
         plotter = Plotter(results, '%s/%s' % (self.RESULTS_FOLDER, self.case))
@@ -312,7 +312,8 @@ class Simulator:
         :return: list with default or selected  state features.
         """
 
-        state_list = decode_GridState(gridstates, self.state_features, self.backcast_steps + 1) # +1 because of the current state
+        state_list = decode_GridState(gridstates, self.state_features,
+                                      self.backcast_steps + 1)  # +1 because of the current state
         if self.forecast_steps > 0:
             if self.forecast_type == "exact":
                 self.forecaster.exact_forecast(env_step=self.env_step)

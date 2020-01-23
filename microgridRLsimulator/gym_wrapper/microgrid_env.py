@@ -8,7 +8,9 @@ import gym
 import numpy as np
 from gym import spaces
 from gym.utils import seeding
+
 from microgridRLsimulator.simulate import Simulator
+from microgridRLsimulator.simulate.gridaction import GridAction
 from microgridRLsimulator.utils import gather_action_dimension, gather_space_dimension
 
 
@@ -46,7 +48,7 @@ class MicrogridEnv(gym.Env):
         May also accept a state as input (useful for MCTS, for instance).
         """
 
-        assert self.action_space.contains(action)
+        assert self.action_space.contains(action) or isinstance(action, GridAction)
         self.state, reward, done = self.simulator.step(action)
         return self._observation(self.state), reward, done, {}
 
@@ -67,4 +69,3 @@ def make_observation_space(simulator):
     lower, upper = gather_space_dimension(simulator)
     observation_space = spaces.Box(lower, upper, dtype=np.float32)
     return observation_space
-
