@@ -47,8 +47,7 @@ class Forecaster:
                 next_load = self.database.get_columns(load.name, self.forecast_date_range[next_step])
                 non_flexible_consumption += next_load
 
-            non_flexible_production, non_flexible_consumption = noise_fn(non_flexible_production,
-                                                                         non_flexible_consumption, i)
+            non_flexible_production, non_flexible_consumption = noise_fn(non_flexible_production, non_flexible_consumption, i)
             self.forecasted_PV_production.append(non_flexible_production)
             self.forecasted_consumption.append(non_flexible_consumption)
 

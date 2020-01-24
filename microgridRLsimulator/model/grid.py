@@ -15,10 +15,17 @@ class Grid:
 
         :param data: A json type dictionary containing a description of the microgridRLsimulator.
         """
-        self.loads = [Load(l["name"], l["capacity"]) for l in data["loads"]]
-        self.generators = [Generator(g["name"], g) for g in data["generators"]]
+        self.loads = []
+        for l in data["loads"]:
+            self.loads.append(Load(l["name"], l["capacity"]))
+        self.generators = []
+        for g in data["generators"]:
+            self.generators.append(Generator(g["name"], g))
         STORAGE_TYPES = {Storage.type(): Storage, DCAStorage.type(): DCAStorage}
-        self.storages = [STORAGE_TYPES[s["type"]](s["name"], s) for s in data["storages"]] # Get the storage type from dict and create appropriate storage type
+
+        self.storages = []
+        for s in data["storages"]:
+            self.storages.append(STORAGE_TYPES[s["type"]](s["name"], s))
 
         self.period_duration = data["period_duration"] / 60  # minutes -> hours
 
@@ -67,8 +74,7 @@ class Grid:
         :param energy_prices: A list of energy prices (i.e. a time series), in EUR/MWh
         :return: The actual purchase price taking into account all components, in EUR/kWh
         """
-        return [self.base_purchase_price + p * (1 + self.price_margin) * 1e-3 for p in
-                energy_prices]
+        return [self.base_purchase_price + p * (1 + self.price_margin) * 1e-3 for p in energy_prices]
 
     def sale_price(self, energy_prices):
         """

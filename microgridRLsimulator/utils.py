@@ -36,7 +36,7 @@ def positive(value, tol=TOL_IS_ZERO):
     return value > tol
 
 
-def decode_GridState(gridstates, features, n_sequences):
+def decode_gridstates(gridstates, features, n_sequences):
     """
 
     :param features: A features dict
@@ -44,18 +44,22 @@ def decode_GridState(gridstates, features, n_sequences):
     :return a list of the state values
     """
     values = list()
+    state_alone_size = len(values)
     for gridstate in gridstates:
-        for attr, val in sorted(features.items()):
-            if val:
-                x = getattr(gridstate, attr)
-                if isinstance(x, list):
-                    values += x
-                else:
-                    values.append(x)
-        if gridstate == gridstates[0]:
-            state_alone_size = len(values)
+        values = _decode_gridstate(features, gridstate, values)
     n_missing_values = state_alone_size * (n_sequences - len(gridstates))
     values = n_missing_values * [.0] + values
+    return values
+
+
+def _decode_gridstate(features, gridstate, values):
+    for attr, val in sorted(features.items()):
+        assert val
+        x = getattr(gridstate, attr)
+        if isinstance(x, list):
+            values += x
+        else:
+            values.append(x)
     return values
 
 
@@ -123,3 +127,17 @@ def gather_space_dimension(simulator):
     lower_limits = np.zeros_like(upper_limits)
 
     return lower_limits, upper_limits
+
+import time
+
+class Timer:
+    def __init__(self, name):
+        self.name = name
+
+    def __enter__(self):
+        self.start = time.clock()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.end = time.clock()
+        print(f"{self.name}:{self.end - self.start}")

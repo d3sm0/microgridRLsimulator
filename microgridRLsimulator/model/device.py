@@ -1,4 +1,6 @@
 from abc import ABCMeta
+
+
 class Device(object):
     __metaclass__ = ABCMeta
 

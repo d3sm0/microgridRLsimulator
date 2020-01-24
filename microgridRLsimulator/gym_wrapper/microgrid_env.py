@@ -49,8 +49,8 @@ class MicrogridEnv(gym.Env):
         """
 
         assert self.action_space.contains(action) or isinstance(action, GridAction)
-        self.state, reward, done = self.simulator.step(action)
-        return self._observation(self.state), reward, done, {}
+        self.state, reward, done, info = self.simulator.step(action)
+        return self._observation(self.state), reward, done, info
 
     @staticmethod
     def _observation(state):

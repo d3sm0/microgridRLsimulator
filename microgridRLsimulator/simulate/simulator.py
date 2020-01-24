@@ -13,10 +13,13 @@ from microgridRLsimulator.plot import Plotter
 from microgridRLsimulator.simulate.forecaster import Forecaster
 from microgridRLsimulator.simulate.gridaction import GridAction
 from microgridRLsimulator.simulate.gridstate import GridState
-from microgridRLsimulator.utils import positive, negative, decode_GridState, CastList
+from microgridRLsimulator.utils import positive, negative, decode_gridstates, CastList
 
 
 class Simulator:
+    this_dir, _ = os.path.split(__file__)
+    package_dir = os.path.dirname(this_dir)
+
     def __init__(self, start_date, end_date, case, params=None):
         """
         :param start_date: datetime for the start of the simulation
@@ -25,14 +28,11 @@ class Simulator:
         :param decision_horizon:
         """
 
-        this_dir, _ = os.path.split(__file__)
-        package_dir = os.path.dirname(this_dir)
+        MICROGRID_CONFIG_FILE = os.path.join(self.package_dir, "data", case, f"{case}.json")
+        MICROGRID_DATA_FILE = os.path.join(self.package_dir, "data", case, f"{case}_dataset.csv")
 
-        MICROGRID_CONFIG_FILE = os.path.join(package_dir, "data", case, "%s.json" % case)
-        MICROGRID_DATA_FILE = os.path.join(package_dir, "data", case, '%s_dataset.csv' % case)
-        self.RESULTS_FOLDER = "results/results_%s_%s" % (
-            case, datetime.now().strftime('%Y-%m-%d_%H%M%S'))
-        self.RESULTS_FILE = "%s/%s_out.json" % (self.RESULTS_FOLDER, case)
+        self.RESULTS_FOLDER = f"results/results_{case}_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}"
+        self.RESULTS_FILE = f"{self.RESULTS_FOLDER}/{case}_out.json"
 
         with open(MICROGRID_CONFIG_FILE, 'rb') as jsonFile:
             self.data = json.load(jsonFile)
@@ -40,11 +40,13 @@ class Simulator:
         if params is not None:
             self.data.update(params)
 
+        generation = self.data['generators'][1]['min_stable_generation']
+        import warnings
+        if generation == 0.:
+            warnings.warn("min stable generation is 0!")
+
         self.grid = Grid(self.data)
         self.objectives = self.data["objectives"]
-
-        for k in self.objectives.values():
-            assert isinstance(k, bool)
 
         self.case = case
         self.database = Database(MICROGRID_DATA_FILE, self.grid)
@@ -57,24 +59,25 @@ class Simulator:
             end_date = pd.to_datetime(end_date)
         self.end_date = end_date
 
-        data_start_date = self.database.data_frame.first_valid_index()
-        data_end_date = self.database.data_frame.last_valid_index()
-        assert (self.start_date < self.end_date), "The end date is before the start date."
-        assert (data_start_date <= self.start_date < data_end_date), "Invalid start date."
-        assert (data_start_date < self.end_date <= data_end_date), "Invalid end date."
+        data_start_date = self.database.first_valid_index
+        data_end_date = self.database.last_valid_index
+        self.check_date(data_end_date, data_start_date)
+        # Period duration is in hours because it is used to perform calculations
         self.date_range = pd.date_range(start=start_date, end=end_date,
-                                        freq=str(int(
-                                            self.grid.period_duration * 60)) + 'min')  # Period duration is in hours because it is used to perform calculations
+                                        freq=str(self.grid.period_duration * 60) + 'min')
         self.high_level_actions = self._infer_high_level_actions()
 
         self.env_step = 0
         self.cumulative_cost = 0.
-        self.grid_states = []
-        self.state_features = self.data["features"]
-        self.backcast_steps = self.data["backcast_steps"]
-        self.forecast_steps = self.data["forecast_steps"]
-        self.forecast_type = self.data["forecast_type"]
-        self.forecaster = Forecaster(simulator=self, control_horizon=self.forecast_steps + 1, deviation_factor=0.2)
+        self.grid_states = collections.deque(maxlen=2)
+        self.state_features = {k: v for k, v in self.data["features"].items() if v is True}
+        self.forecaster = Forecaster(simulator=self, control_horizon=self.data['forecast_steps'] + 1,
+                                     deviation_factor=0.2)
+
+    def check_date(self, data_end_date, data_start_date):
+        assert (self.start_date < self.end_date), "The end date is before the start date."
+        assert (data_start_date <= self.start_date < data_end_date), "Invalid start date."
+        assert (data_start_date < self.end_date <= data_end_date), "Invalid end date."
 
     def reset(self):
         """
@@ -87,20 +90,24 @@ class Simulator:
         self.cumulative_cost = 0.
         self.grid = Grid(self.data)  # refresh the grid (storage capacity, number of cycles, etc)
         # Initialize a gridstate
-        self.grid_states = [GridState(self.grid, self.start_date)]
-        self.grid_states[-1].cumulative_cost = self.cumulative_cost
+        reset_state = self._make_reset_state()
+        self.grid_states.append(reset_state)
+        return self._decode_state((reset_state,))
+
+    def _make_reset_state(self):
+        reset_state = GridState(self.grid, self.start_date)
+        reset_state.cumulative_cost = self.cumulative_cost
         realized_non_flexible_production = 0.0
         for g in self.grid.generators:
             if not g.steerable:
                 realized_non_flexible_production += self.database.get_columns(g.name, self.start_date)
-
         realized_non_flexible_consumption = 0.0
         for l in self.grid.loads:
             realized_non_flexible_consumption += self.database.get_columns(l.name, self.start_date)
         # Add in the state the information about renewable generation and demand
-        self.grid_states[-1].non_steerable_production = realized_non_flexible_production
-        self.grid_states[-1].non_steerable_consumption = realized_non_flexible_consumption
-        return self._decode_state([self.grid_states[-1]])
+        reset_state.non_steerable_production = realized_non_flexible_production
+        reset_state.non_steerable_consumption = realized_non_flexible_consumption
+        return reset_state
 
     def step(self, actions):
         """
@@ -198,15 +205,14 @@ class Simulator:
         self.grid_states[-1].fuel_cost = sum(actual_generation_cost[g] for g in self.grid.generators)
         self.grid_states[-1].curtailment_cost = actual_export * self.grid.curtailment_price
         self.grid_states[-1].load_not_served_cost = actual_import * self.grid.load_shedding_price
-        self.grid_states[-1].total_cost = self.grid_states[-1].load_not_served_cost + \
-                                          self.grid_states[-1].curtailment_cost + self.grid_states[-1].fuel_cost
+        self.grid_states[-1].total_cost = self.grid_states[-1].load_not_served_cost + self.grid_states[
+            -1].curtailment_cost + self.grid_states[-1].fuel_cost
 
         multiobj = {'total_cost': self.grid_states[-1].total_cost,
                     'load_shedding': actual_import,
                     'fuel_cost': self.grid_states[-1].fuel_cost,
                     'curtailment': actual_export,
-                    'storage_maintenance': {self.grid.storages[b].name: self.grid.storages[b].n_cycles for b in
-                                            range(n_storages)}
+                    'storage_maintenance': sum([self.grid.storages[b].n_cycles for b in range(n_storages)])
                     }
 
         self.cumulative_cost += self.grid_states[-1].total_cost
@@ -230,8 +236,8 @@ class Simulator:
         next_grid_state.non_steerable_consumption = realized_non_flexible_consumption
         self.grid_states.append(next_grid_state)
         # Pass the information about the next state, cost of the previous control actions and termination condition
-        return self._decode_state(self.grid_states[-(self.backcast_steps + 1):]), self._compute_rewards(
-            multiobj), is_terminal  # +1 to take into account the current state
+        # self.grid_states[-(self.data['backcast_steps'] + 1):]
+        return self._decode_state((next_grid_state,)), -multiobj['total_cost'], is_terminal, {'costs': multiobj}
 
     def store_and_plot(self, folder=None, learning_results=None, agent_options=None):
         """
@@ -312,12 +318,12 @@ class Simulator:
         :return: list with default or selected  state features.
         """
 
-        state_list = decode_GridState(gridstates, self.state_features,
-                                      self.backcast_steps + 1)  # +1 because of the current state
-        if self.forecast_steps > 0:
-            if self.forecast_type == "exact":
+        state_list = decode_gridstates(gridstates, self.state_features,
+                                       self.data['backcast_steps'] + 1)  # +1 because of the current state
+        if self.data['forecast_steps'] > 0:
+            if self.data['forecast_type'] == "exact":
                 self.forecaster.exact_forecast(env_step=self.env_step)
-            elif self.forecast_type == "noisy":
+            elif self.data['forecast_type'] == "noisy":
                 self.forecaster.noisy_forecast(env_step=self.env_step)
             state_list += self.forecaster.forecasted_consumption[1:]
             state_list += self.forecaster.forecasted_PV_production[1:]
@@ -412,15 +418,3 @@ class Simulator:
                 i += 1
 
         return GridAction(generation, charge, discharge)
-
-    def _compute_rewards(self, multiobj_dict):
-
-        rewards_dict = {}
-        for o, val in self.objectives.items():
-            if val:
-                rewards_dict[o] = multiobj_dict[o]
-        if len(
-                rewards_dict) == 1:  # I think it is better to always return a dict than sometimes a dict and sometimes a value
-            return -list(rewards_dict.values())[0]
-        else:
-            return rewards_dict

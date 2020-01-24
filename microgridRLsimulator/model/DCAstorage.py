@@ -1,6 +1,7 @@
 from microgridRLsimulator.model.storage import Storage
 from microgridRLsimulator.utils import positive
 
+
 class DCAStorage(Storage):
     def __init__(self, name, params):
         """
@@ -10,7 +11,8 @@ class DCAStorage(Storage):
         """
 
         super().__init__(name, params)
-        self.operating_point = params["operating_point"] # The number of cycle is 0 at the beginning -> we already have one operating point 
+        # The number of cycle is 0 at the beginning -> we already have one operating point
+        self.operating_point = params["operating_point"]
         self.initial_capacity = params["capacity"]
 
 

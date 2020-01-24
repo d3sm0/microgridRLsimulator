@@ -11,11 +11,12 @@ class GridState:
         :param grid: A Grid object
         :param date_time: The time at which the system in this state
         """
+        self.cumulative_cost = 0.
         self.grid = grid
         n_storages = len(self.grid.storages)
         n_generators = len(self.grid.generators)
         self.date_time = date_time
-        self.delta_h = self.compute_delta_h()
+        # self.delta_h = self.compute_delta_h()
         # List of state of charge for all storage devices, initialized at half of their capacity
         self.state_of_charge = [s.capacity / 2.0 for s in self.grid.storages]
         self.n_cycles = [0 for s in self.grid.storages]

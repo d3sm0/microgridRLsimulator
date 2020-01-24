@@ -19,3 +19,6 @@ results
 microgridRLsimulator.egg-info/
 microgrid_tensorboard/
 /profiling/
+
+__pycache__
+.idea
