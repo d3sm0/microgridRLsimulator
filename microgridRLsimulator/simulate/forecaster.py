@@ -37,7 +37,7 @@ class Forecaster:
             for generator in self.grid.generators:
                 if not generator.steerable:
                     time = next_step * self.grid.period_duration * 60
-                    updated_capacity = generator.compute_capacity(time)
+                    updated_capacity = generator.find_capacity(time)
                     # Assumption: the capacity update is not taken into account for optimization
                     scale = (updated_capacity / generator.initial_capacity)
                     next_production = self.database.get_columns(generator.name, self.forecast_date_range[next_step])

@@ -5,7 +5,7 @@ import pandas as pd
 class Database:
     _inputs_ = ['Year', 'Month', 'Day', 'Hour', 'Minutes', 'Seconds', 'IsoDayOfWeek', 'IsoWeekNumber']
 
-    def __init__(self, path_to_csv, device_names):
+    def __init__(self, path_to_csv, grid):
         """
         A Database objects holds the realized data of the microgridRLsimulator in a pandas dataframe.
 
@@ -22,7 +22,7 @@ class Database:
         :param path_to_csv: Path to csv containing realized data
         :param grid: A Grid object describing the configuration of the microgridRLsimulator
         """
-        self._output_ = device_names
+        self._output_ = grid.get_non_flexible_device_names()  # + ['Price'] # Add the price when working on-grid
         self.read_data(path_to_csv)
 
     def read_data(self, path):
@@ -53,7 +53,7 @@ class Database:
         # Assert required columns are defined
         for tag in self._output_:
             if tag not in self.columns_name:
-                raise ValueError(f"Column name {tag} not defined in {path}")
+                raise ValueError("Column name %s not defined in %s" % (tag, path))
 
         return df
 
