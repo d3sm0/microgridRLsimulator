@@ -1,16 +1,16 @@
 from microgridRLsimulator.model.device import Device
-from microgridRLsimulator.utils import positive, TOL_IS_ZERO
 
 
 class Storage(Device):
-    def __init__(self, name, params):
+    def __init__(self, params):
         """
 
         :param name: Cf. parent class
         :param params: dictionary of params, must include a capacity value , a max_charge_rate value,
         a max_discharge_rate value, a charge_efficiency value and a discharge_efficiency value.
         """
-        super(Storage, self).__init__(name)
+        assert 'name' in params.keys()
+        super(Storage, self).__init__(params['name'])
 
         self.capacity = None
         self.max_charge_rate = None
@@ -25,31 +25,6 @@ class Storage(Device):
         assert (self.capacity is not None)
         assert (self.max_charge_rate is not None)
         assert (self.max_discharge_rate is not None)
-
-    @staticmethod
-    def type():
-        return "Storage"
-
-    def actual_power(self, charge_action, discharge_action):
-        """
-
-        :param charge_action: Charge action from a controller
-        :param discharge_action: Discharge action from a controller
-        :return: the actual charge and the actual discharge.
-        """
-
-        actual_charge = charge_action
-        actual_discharge = discharge_action
-        # Take care of potential simultaneous charge and discharge.
-        if positive(charge_action) and positive(discharge_action):
-            net = charge_action - discharge_action
-            if net > TOL_IS_ZERO:
-                actual_charge = net
-                actual_discharge = 0.0
-            elif net < -TOL_IS_ZERO:
-                actual_charge = 0
-                actual_discharge = -net
-        return actual_charge, actual_discharge
 
     def update_cycles(self, throughput, deltat):
         """
@@ -74,14 +49,33 @@ class Storage(Device):
 
         next_soc = initial_soc
         actual_charge, actual_discharge = self.actual_power(charge_action, discharge_action)
-
-        if positive(actual_charge):
-            planned_evolution = initial_soc + actual_charge * deltat * self.charge_efficiency # TODO check action is an energy: action is a power
-            next_soc = min(self.capacity, planned_evolution)                                  # period duration used to modify it in an energy
+        # TODO check action is an energy: action is a power
+        if actual_charge > 0:
+            planned_evolution = initial_soc + actual_charge * deltat * self.charge_efficiency
+            next_soc = min(self.capacity, planned_evolution)  # period duration used to modify it in an energy
             actual_charge = (next_soc - initial_soc) / (self.charge_efficiency * deltat)
-        elif positive(actual_discharge):
-            planned_evolution = initial_soc - actual_discharge * deltat / self.discharge_efficiency # same for discharge
+
+        elif actual_discharge < 0:
+            planned_evolution = initial_soc - actual_discharge * deltat / self.discharge_efficiency  # same for discharge
             next_soc = max(0, planned_evolution)
             actual_discharge = (initial_soc - next_soc) * self.discharge_efficiency / deltat
 
         return next_soc, actual_charge, actual_discharge
+
+    @staticmethod
+    def actual_power(charge_action, discharge_action):
+        """
+
+            :param charge_action: Charge action from a controller
+            :param discharge_action: Discharge action from a controller
+            :return: the actual charge and the actual discharge.
+            """
+
+        # Take care of potential simultaneous charge and discharge.
+        if discharge_action < 0:
+            return charge_action, discharge_action
+        net = charge_action - discharge_action
+        action = abs(net)
+        return (action, 0) if net > 0 else (0, action)
+
+

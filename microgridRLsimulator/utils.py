@@ -36,18 +36,20 @@ def positive(value, tol=TOL_IS_ZERO):
     return value > tol
 
 
-def decode_gridstates(gridstates, features, n_sequences):
+def decode_gridstates(gridstates, features):
     """
 
     :param features: A features dict
     :param n_sequences: the number of state sequences (backcast)
     :return a list of the state values
     """
+
+    n_states = len(gridstates)
     values = list()
     state_alone_size = len(values)
     for gridstate in gridstates:
         values = _decode_gridstate(features, gridstate, values)
-    n_missing_values = state_alone_size * (n_sequences - len(gridstates))
+    n_missing_values = state_alone_size * (n_states - len(gridstates))
     values = n_missing_values * [.0] + values
     return values
 
@@ -100,7 +102,7 @@ def gather_action_dimension(simulator):
 def gather_space_dimension(simulator):
     # Observation space
     state_upper_limits = list()
-    for attr, val in sorted(simulator.data["features"].items()):
+    for attr, val in sorted(simulator.grid_params["features"].items()):
         if val:
             if attr == "non_steerable_production" or attr == "res_gen_capacities":
                 production = [sum(g.capacity for g in simulator.grid.generators if not g.steerable)]
@@ -114,15 +116,15 @@ def gather_space_dimension(simulator):
             elif attr == "delta_h":
                 state_upper_limits += [np.Inf]
             elif attr == "state_of_charge" or attr == "capacities":
-                state_upper_limits += [b.capacity for b in simulator.grid.storages]
+                state_upper_limits +=  simulator.grid.storages.capacity()
 
     forecast_upper_limits = []
-    if simulator.data["forecast_steps"]:
+    if simulator.grid_params["forecast_steps"]:
         forecast_upper_limits = [sum(l.capacity for l in simulator.grid.loads),
                                  sum(g.capacity for g in simulator.grid.generators if not g.steerable)] * \
-                                simulator.data["forecast_steps"]
+                                simulator.grid_params["forecast_steps"]
 
-    n_steps = simulator.data["backcast_steps"] + 1
+    n_steps = simulator.grid_params["backcast_steps"] + 1
     upper_limits = np.array(n_steps * state_upper_limits + forecast_upper_limits, dtype=np.float32)
     lower_limits = np.zeros_like(upper_limits)
 

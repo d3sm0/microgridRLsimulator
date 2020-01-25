@@ -1,11 +1,12 @@
+from microgridRLsimulator.model.DCAstorage import DCAStorage, Storages
+from microgridRLsimulator.model.generator import Generator, Engine
 from microgridRLsimulator.model.load import Load
 from microgridRLsimulator.model.storage import Storage
-from microgridRLsimulator.model.DCAstorage import DCAStorage
-
-from microgridRLsimulator.model.generator import Generator
 
 
 class Grid:
+    STORAGE_TYPES = dict(DCAStorage=DCAStorage, Storage=Storage)
+
     def __init__(self, data):
         """
         A microgridRLsimulator is represented by its devices which are either loads, generators or storage
@@ -16,73 +17,58 @@ class Grid:
         :param data: A json type dictionary containing a description of the microgridRLsimulator.
         """
         self.loads = []
-        for l in data["loads"]:
-            self.loads.append(Load(l["name"], l["capacity"]))
+        for load in data["loads"]:
+            self.loads.append(Load(**load))
+
         self.generators = []
+        #self.steerable_generators = []
         for g in data["generators"]:
-            self.generators.append(Generator(g["name"], g))
-        STORAGE_TYPES = {Storage.type(): Storage, DCAStorage.type(): DCAStorage}
+            if g['steerable'] is False:
+                self.generators.append(Generator(g))
+            else:
+                self.generators.append(Engine(g))
+                #self.steerable_generators.append(Engine(g))
 
-        self.storages = []
-        for s in data["storages"]:
-            self.storages.append(STORAGE_TYPES[s["type"]](s["name"], s))
+        self.storages = Storages(data["storages"])
 
-        self.period_duration = data["period_duration"] / 60  # minutes -> hours
+        self.delta_t = data["period_duration"] / 60  # minutes -> hours
 
         self.curtailment_price = data["curtailment_price"]
         self.load_shedding_price = data["load_shedding_price"]
 
+    def get_production(self, database, time, update_capacity=False):
+        realized_non_flexible_production = 0.0
+        for epv in self.generators:
+            # assert epv.steerable is False
+            if not epv.steerable:
+                realized_non_flexible_production += database.get_columns(epv.name, time) * (
+                            epv.capacity / epv.initial_capacity)
+        return realized_non_flexible_production
+
+    def update_capacity(self, time):
+        total_capacity = []
+        time = time * 60
+        for epv in self.generators:
+            if not epv.steerable:
+                epv.update_capacity(time)
+                total_capacity.append(epv.capacity)
+        return total_capacity
+
+    def get_load(self, database, time):
+
+        realized_non_flexible_consumption = 0.0
+        for l in self.loads:
+            realized_non_flexible_consumption += database.get_columns(l.name, time)
+        return realized_non_flexible_consumption
+
+
     @property
-    def base_purchase_price(self):
-        return self._base_purchase_price
-
-    @base_purchase_price.setter
-    def base_purchase_price(self, value):
-        assert isinstance(value, int) or isinstance(value, float)
-        self._base_purchase_price = float(value)
+    def n_storages(self):
+        return len(self.storages)
 
     @property
-    def peak_price(self):
-        return self._peak_price
-
-    @peak_price.setter
-    def peak_price(self, value):
-        assert isinstance(value, int) or isinstance(value, float)
-        self._peak_price = float(value)
-
-    @property
-    def period_duration(self):
-        return self._period_duration
-
-    @period_duration.setter
-    def period_duration(self, value):
-        assert isinstance(value, int) or isinstance(value, float)
-        self._period_duration = float(value)
-
-    @property
-    def price_margin(self):
-        return self._price_margin
-
-    @price_margin.setter
-    def price_margin(self, value):
-        assert isinstance(value, int) or isinstance(value, float)
-        self._price_margin = float(value)
-
-    def purchase_price(self, energy_prices):
-        """
-
-        :param energy_prices: A list of energy prices (i.e. a time series), in EUR/MWh
-        :return: The actual purchase price taking into account all components, in EUR/kWh
-        """
-        return [self.base_purchase_price + p * (1 + self.price_margin) * 1e-3 for p in energy_prices]
-
-    def sale_price(self, energy_prices):
-        """
-
-        :param energy_prices: A list of energy prices (i.e. a time series), in EUR/MWh
-        :return: The actual sale price taking into account all components, in EUR/kWh
-        """
-        return [p * (1 - self.price_margin) * 1e-3 for p in energy_prices]
+    def n_generators(self):
+        return len(self.generators)
 
     def get_non_flexible_device_names(self):
         """
