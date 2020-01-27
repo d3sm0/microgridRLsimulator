@@ -13,13 +13,15 @@ class Forecaster:
         :param control_horizon: The number of forecast steps (includes the current step)
         :param deviation_factor: the std factor used for the noisy forecast
         """
-        self.date_range = simulator.date_range
+        self.date_range = simulator.database.time_to_idx
         self.start_date_index = simulator.env_step  # maybe +1
         self.database = simulator.database
         self.grid = simulator.grid
         self.control_horizon = control_horizon  # min(control_horizon, len(
         # self.date_range) - 1 - self.start_date_index)  # -1 because the end date is not part of the problem
-        date_range = pd.date_range(start=self.date_range[-1], periods=self.control_horizon, freq=self.date_range.freq)
+        date_range = simulator.database.time_to_idx[self.start_date_index-1:self.control_horizon]
+        #date_range = date
+        #    pd.date_range(start=self.date_range[-1], periods=self.control_horizon, freq=self.date_range.freq)
         self.forecast_date_range = list(sorted(set(chain(self.date_range, date_range))))
         self.forecasted_PV_production = None
         self.forecasted_consumption = None

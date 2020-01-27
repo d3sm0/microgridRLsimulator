@@ -46,15 +46,14 @@ def decode_gridstates(gridstates, features, n_sequences):
     values = list()
     state_alone_size = len(values)
     for gridstate in gridstates:
-        values = _decode_gridstate(features, gridstate, values)
+        values = _decode_gridstate(gridstate, values, features)
     n_missing_values = state_alone_size * (n_sequences - len(gridstates))
     values = n_missing_values * [.0] + values
     return values
 
 
-def _decode_gridstate(features, gridstate, values):
-    for attr, val in sorted(features.items()):
-        assert val
+def _decode_gridstate(gridstate, values, features=None):
+    for attr in sorted(features):
         x = getattr(gridstate, attr)
         if isinstance(x, list):
             values += x

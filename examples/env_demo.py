@@ -8,9 +8,9 @@ from microgridRLsimulator.gym_wrapper import MicrogridEnv
 # Initialize environment
 def main():
     env_init = {
-        "start_date": "2015-01-01",
-        "end_date": "2015-01-31",
-        "data_file": "case1"
+        "start_date": "2016-01-01",
+        "end_date": "2016-01-31",
+        "data_file": "elespino"
     }
 
     params = {

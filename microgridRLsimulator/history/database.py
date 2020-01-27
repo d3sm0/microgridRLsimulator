@@ -5,7 +5,7 @@ import pandas as pd
 class Database:
     _inputs_ = ['Year', 'Month', 'Day', 'Hour', 'Minutes', 'Seconds', 'IsoDayOfWeek', 'IsoWeekNumber']
 
-    def __init__(self, path_to_csv, grid):
+    def __init__(self, path_to_csv, device_names, freq=None, date_slice=None):
         """
         A Database objects holds the realized data of the microgridRLsimulator in a pandas dataframe.
 
@@ -20,12 +20,13 @@ class Database:
         a datetime corresponds to a day of the week or not.
 
         :param path_to_csv: Path to csv containing realized data
-        :param grid: A Grid object describing the configuration of the microgridRLsimulator
+        :param device_names: A Grid object describing the configuration of the microgridRLsimulator
         """
-        self._output_ = grid.get_non_flexible_device_names()  # + ['Price'] # Add the price when working on-grid
-        self.read_data(path_to_csv)
+        self._output_ = device_names  # + ['Price'] # Add the price when working on-grid
+        self.read_data(path_to_csv, date_slice, freq=freq)
+        self.max_steps = len(self.time_to_idx)
 
-    def read_data(self, path):
+    def read_data(self, path, date_slice=None, freq=None):
         """
         Read data and generate new columns based on the DateTime column.
 
@@ -34,27 +35,29 @@ class Database:
         """
         df = pd.read_csv(path, sep=";|,", parse_dates=True, index_col='DateTime', engine='python')
 
+        if date_slice is not None:
+            df = self._slice_dataset(date_slice, df)
+        if freq is not None:
+            df = df.resample(str(int(freq)) + 'h').apply(np.mean)
+
         assert df.index.is_monotonic, f"DateTime index is not monotonic for {path}"
         self.columns_name = df.columns.tolist()
         self.values = df.values.astype(np.float32)
         self.time_to_idx = df.index.tolist()
-        self.first_valid_index = df.first_valid_index()
-        self.last_valid_index = df.last_valid_index()
-
-        # df['Year'] = df.index.map(lambda x: x.year)
-        # df['Month'] = df.index.map(lambda x: x.month)
-        # df['Day'] = df.index.map(lambda x: x.day)
-        # df['Hour'] = df.index.map(lambda x: x.hour)
-        # df['Minutes'] = df.index.map(lambda x: x.minute)
-        # df['Seconds'] = df.index.map(lambda x: x.second)
-        # df['IsoDayOfWeek'] = df.index.map(lambda x: x.isoweekday())
-        # df['IsoWeekNumber'] = df.index.map(lambda x: x.isocalendar()[1])
 
         # Assert required columns are defined
         for tag in self._output_:
             if tag not in self.columns_name:
-                raise ValueError("Column name %s not defined in %s" % (tag, path))
+                raise ValueError(f"Column name {tag} not defined in {path}")
 
+        return df
+
+    def _slice_dataset(self, date_slice, df):
+        data_start = df.first_valid_index()
+        data_end = df.last_valid_index()
+        start_date, end_date = date_slice
+        check_date(start_date, end_date, data_start, data_end)
+        df = df.loc[start_date:end_date]
         return df
 
     def get_columns(self, column_indexer, time_indexer):
@@ -92,3 +95,9 @@ class Database:
         :return: A list containing the value of all the series at time time_indexer
         """
         raise NotImplementedError()
+
+
+def check_date(start_date, end_date, data_start_date, data_end_date):
+    assert (start_date < end_date), "The end date is before the start date."
+    assert (data_start_date <= start_date < data_end_date), "Invalid start date."
+    assert (data_start_date < end_date <= data_end_date), "Invalid end date."
