@@ -78,10 +78,10 @@ class Forecaster:
         def noise_fn(production, consumption, time_step):
             # increasing from 0 at current step to deviation at final step
             noise = np.random.normal(scale=std_factor[time_step] * production)
-            production = min(0, production + noise)
+            production = max(0, production + noise)
             # std relative to the exact value => use of a deviation factor increasing from 0% to 20% at last step (can be modified)
             noise = np.random.normal(scale=std_factor[time_step] * consumption)
-            consumption = min(0, consumption + noise)
+            consumption = max(0, consumption + noise)
             return production, consumption
 
         self._forecast(env_step, noise_fn)
