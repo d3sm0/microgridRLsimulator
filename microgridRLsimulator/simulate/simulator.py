@@ -10,7 +10,6 @@ import pandas as pd
 from microgridRLsimulator.history import Database
 from microgridRLsimulator.model.grid import Grid
 from microgridRLsimulator.plot import Plotter
-from microgridRLsimulator.simulate.forecaster import Forecaster
 from microgridRLsimulator.simulate.gridaction import GridAction
 from microgridRLsimulator.simulate.gridstate import GridState
 from microgridRLsimulator.utils import positive, negative, decode_gridstates, CastList
@@ -67,21 +66,15 @@ class Simulator:
                                  freq=self.grid.period_duration)
 
         self.case = case
-        self.actions = {}
         # converting dates to datetime object
-
         # Period duration is in hours because it is used to perform calculations
-        #self.date_range = pd.date_range(start=start_date, end=end_date,
-        #                                freq=str(self.grid.period_duration * 60) + 'min')
-        #self.database.time_to_idx == self.date_range
         self.high_level_actions = self._infer_high_level_actions()
 
         self.env_step = 0
         self.cumulative_cost = 0.
-        self.grid_states = collections.deque(maxlen=2)
+        self.grid_states = [] # collections.deque(maxlen=1)
         self.state_features = {k: v for k, v in self.data["features"].items() if v is True}
-        self.forecaster = Forecaster(simulator=self, control_horizon=self.data['forecast_steps'] + 1,
-                                     deviation_factor=0.2)
+        print(f"Init simulator {self.case}:{str(start_date), str(end_date)}.\tMax steps:{self.database.max_steps}")
 
     def reset(self):
         """
@@ -89,7 +82,6 @@ class Simulator:
 
         :return: A state representation for the agent as a list
         """
-        self.actions = {}
         self.env_step = 0
         self.cumulative_cost = 0.
         self.grid = Grid(self.data)  # refresh the grid (storage capacity, number of cycles, etc)
@@ -125,17 +117,14 @@ class Simulator:
 
         actions = self.gather_action(actions)
 
-        # Record these actions in a json file
-        self.actions[dt.strftime('%y/%m/%d_%H')] = actions.to_json()
-
         #  Update the step number and check the termination condition
         self.env_step += 1
         is_terminal = self.check_terminal()
         p_dt = self.database.time_to_idx[self.env_step]  # It's the next step
 
         # Construct an empty next state
-        dt = (p_dt - self.start_date).seconds / (60 ** 2)
-        next_grid_state = GridState(self.grid, dt)
+        # dt = (p_dt - self.start_date).seconds / (60 ** 2)
+        next_grid_state = GridState(self.grid, p_dt)
 
         # Apply the control actions
         n_storages = len(self.grid.storages)
@@ -264,6 +253,7 @@ class Simulator:
         return actual_charge, actual_discharge
 
     def store_and_plot(self, folder=None, learning_results=None, agent_options=None):
+
         """
         Store and plot results.
 
@@ -342,15 +332,7 @@ class Simulator:
         :return: list with default or selected  state features.
         """
 
-        state_list = decode_gridstates(gridstates, self.state_features,
-                                       self.data['backcast_steps'] + 1)  # +1 because of the current state
-        if self.data['forecast_steps'] > 0:
-            if self.data['forecast_type'] == "exact":
-                self.forecaster.exact_forecast(env_step=self.env_step)
-            elif self.data['forecast_type'] == "noisy":
-                self.forecaster.noisy_forecast(env_step=self.env_step)
-            state_list += self.forecaster.forecasted_consumption[1:]
-            state_list += self.forecaster.forecasted_PV_production[1:]
+        state_list = decode_gridstates(gridstates, self.state_features, self.data['backcast_steps'] + 1)
         return state_list
 
     def _construct_action(self, high_level_action):
