@@ -19,14 +19,18 @@ class Grid:
             self.loads.append(Load(l["name"], l["capacity"]))
         self.generators = []
         for g in data["generators"]:
-            self.generators.append(Generator(g["name"], g))
-        STORAGE_TYPES = {Storage.type(): Storage, DCAStorage.type(): DCAStorage}
+            if "EPV" in g["name"]:
+                generator = Generator(g)
+            else:
+                generator = Generator(g)
+            self.generators.append(generator)
+        STORAGE_TYPES = {Storage.storage_type: Storage, DCAStorage.storage_type: DCAStorage}
 
         self.storages = []
         for s in data["storages"]:
-            self.storages.append(STORAGE_TYPES[s["type"]](s["name"], s))
+            self.storages.append(STORAGE_TYPES[s["type"]](s))
 
-        self.period_duration = data["period_duration"] / 60  # minutes -> hours
+        self.period_duration = data["period_duration"] // 60  # minutes -> hours
 
         self.curtailment_price = data["curtailment_price"]
         self.load_shedding_price = data["load_shedding_price"]
