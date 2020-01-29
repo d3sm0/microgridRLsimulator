@@ -3,22 +3,19 @@ from microgridRLsimulator.utils import positive
 
 
 class DCAStorage(Storage):
-    def __init__(self, name, params):
+    storage_type = "DCAStorage"
+
+    def __init__(self, params):
         """
         :param name: Cf. parent class
         :param params: dictionary of params, must include a capacity value , a max_charge_rate value,
         a max_discharge_rate value, a charge_efficiency value, a discharge_efficiency value and an operating point.
         """
 
-        super().__init__(name, params)
+        super().__init__(params['name'], params)
         # The number of cycle is 0 at the beginning -> we already have one operating point
         self.operating_point = params["operating_point"]
         self.initial_capacity = params["capacity"]
-
-
-    @staticmethod
-    def type():
-        return "DCAStorage"
 
     def update_capacity(self):
         """
@@ -39,7 +36,7 @@ class DCAStorage(Storage):
         :return: the next state of charge, the actual charge and the actual discharge.
         """
 
-        next_soc = initial_soc
+        next_soc = min(initial_soc, self.capacity)
         actual_charge, actual_discharge = self.actual_power(charge_action, discharge_action)
 
         if positive(actual_charge):
@@ -50,10 +47,11 @@ class DCAStorage(Storage):
             actual_charge = (next_soc - initial_soc) / (self.charge_efficiency * deltat)
 
         elif positive(actual_discharge):
-            planned_evolution = initial_soc - actual_discharge * deltat / self.discharge_efficiency 
-            next_soc = max(0, planned_evolution)
-            actual_discharge = (initial_soc - next_soc) * self.discharge_efficiency / deltat
             self.update_cycles(throughput = actual_discharge / self.discharge_efficiency, deltat = deltat) # same for discharge
             self.update_capacity()
-        
+            planned_evolution = initial_soc - actual_discharge * deltat / self.discharge_efficiency
+            next_soc = max(0, planned_evolution)
+            actual_discharge = (initial_soc - next_soc) * self.discharge_efficiency / deltat
+
+        assert actual_charge >= 0 and actual_discharge >= 0 and next_soc >= 0, "something is wrong here"
         return next_soc, actual_charge, actual_discharge
