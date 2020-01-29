@@ -3,14 +3,14 @@ from microgridRLsimulator.model.device import Device
 
 class Generator(Device):
 
-    def __init__(self, name, params):
+    def __init__(self, params):
         """
         
         :param name: Cf. parent class
         :param params: dictionary of params, must include a capacity value , a steerable flag, and a min_stable_generation value
         """
 
-        super(Generator, self).__init__(name)
+        super(Generator, self).__init__(params['name'])
 
         self.capacity = None
         self.steerable = False
@@ -65,7 +65,7 @@ class Generator(Device):
         F_1 = slope
 
         diesel_consumption_l = 0
-
+        production = max(0, production)
         if TOL_IS_ZERO < production < min_stable_generation: # TODO This is already verified in construct action, check if this should be removed. Though in continuous action space, construct action method is not used
             genset_generation = min_stable_generation
         elif production > self.capacity:
