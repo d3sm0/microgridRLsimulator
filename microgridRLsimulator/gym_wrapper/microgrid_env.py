@@ -9,24 +9,23 @@ import numpy as np
 from gym import spaces
 from gym.utils import seeding
 
-from microgridRLsimulator.simulate import Simulator
+from microgridRLsimulator.simulate import _simulator2 as simulator
 from microgridRLsimulator.simulate.gridaction import GridAction
-from microgridRLsimulator.utils import gather_action_dimension, gather_space_dimension
 
 
 class MicrogridEnv(gym.Env):
 
-    def __init__(self, start_date, end_date, data_file, purpose="Train", params=None):
+    def __init__(self, start_date, end_date, case, purpose="Train", params=None):
         """
         :param start_date: datetime for the start of the simulation
         :param end_date: datetime for the end of the simulation
         :param case: case name (string)
         """
 
-        self.simulator = Simulator(start_date, end_date, data_file, params=params)
+        self.simulator = simulator.Simulator(start_date, end_date, case, params=params)
 
-        self.action_space = make_action_space(simulator=self.simulator)
-        self.observation_space = make_observation_space(simulator=self.simulator)
+        self.action_space = make_action_space(self.simulator)
+        self.observation_space = make_observation_space(self.simulator)
 
         self.state = None
         self.np_random = None
@@ -58,14 +57,14 @@ class MicrogridEnv(gym.Env):
 
 
 def make_action_space(simulator):
-    if simulator.data['action_space'].lower() == "discrete":
-        return spaces.Discrete(len(simulator.high_level_actions))
-    lower, upper = gather_action_dimension(simulator)
+    if simulator.env_config['action_space'].lower() == "discrete":
+        return spaces.Discrete(3)
+    lower, upper = simulator.grid.gather_action_space()
     action_space = spaces.Box(lower, upper, dtype=np.float32)
     return action_space
 
 
 def make_observation_space(simulator):
-    lower, upper = gather_space_dimension(simulator)
+    lower, upper = simulator.grid.gather_observation_space()
     observation_space = spaces.Box(lower, upper, dtype=np.float32)
     return observation_space

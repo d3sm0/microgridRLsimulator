@@ -10,7 +10,7 @@ def main():
     env_init = {
         "start_date": "2016-01-01",
         "end_date": "2016-01-31",
-        "data_file": "elespino"
+        "case": "elespino"
     }
 
     params = {
@@ -19,22 +19,23 @@ def main():
         "forecast_steps": 0,
         "forecast_type": "exact"}
 
+    import time
     env = MicrogridEnv(**env_init, params=params)
-
-    # Compute cumulative reward of a random policy
     sum_reward = 0
     T = 1000
+    dt = []
+    start = time.perf_counter()
     state = env.reset()
     for tt in range(T):
-        print("state: ", state)
+        # print("state: ", state)
         action = env.action_space.sample()
         next_state, reward, done, info = env.step(action)
         state = next_state
-
         sum_reward += reward
         if done:
+            dt.append(time.perf_counter() - start)
+            print(sum_reward)
             break
-
     # Store and plot
     # env.simulator.store_and_plot()
 

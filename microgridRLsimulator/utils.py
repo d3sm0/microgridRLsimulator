@@ -68,7 +68,7 @@ def time_string_for_storing_results(name, case):
     :param case: the case name
     :return a string used for file or folder names
     """
-    return name + "_%s_%s" % (case, datetime.now().strftime('%Y-%m-%d_%H%M'))
+    return name + f"_{case}_{datetime.now().strftime('%Y-%m-%d_%H%M')}"
 
 
 class CastList(list):
@@ -99,7 +99,7 @@ def gather_action_dimension(simulator):
 def gather_space_dimension(simulator):
     # Observation space
     state_upper_limits = list()
-    for attr, val in sorted(simulator.data["features"].items()):
+    for attr, val in sorted(simulator.env_config["features"].items()):
         if val:
             if attr == "non_steerable_production" or attr == "res_gen_capacities":
                 production = [sum(g.capacity for g in simulator.grid.generators if not g.steerable)]
@@ -116,18 +116,20 @@ def gather_space_dimension(simulator):
                 state_upper_limits += [b.capacity for b in simulator.grid.storages]
 
     forecast_upper_limits = []
-    if simulator.data["forecast_steps"]:
+    if simulator.env_config["forecast_steps"]:
         forecast_upper_limits = [sum(l.capacity for l in simulator.grid.loads),
                                  sum(g.capacity for g in simulator.grid.generators if not g.steerable)] * \
                                 simulator.data["forecast_steps"]
 
-    n_steps = simulator.data["backcast_steps"] + 1
+    n_steps = simulator.env_config["backcast_steps"] + 1
     upper_limits = np.array(n_steps * state_upper_limits + forecast_upper_limits, dtype=np.float32)
     lower_limits = np.zeros_like(upper_limits)
 
     return lower_limits, upper_limits
 
+
 import time
+
 
 class Timer:
     def __init__(self, name):
@@ -140,3 +142,16 @@ class Timer:
     def __exit__(self, type, value, traceback):
         self.end = time.clock()
         print(f"{self.name}:{self.end - self.start}")
+
+
+import os
+
+pkg_dir = os.path.dirname(__file__)
+MICROGRID_CONFIG_FILE = lambda case: os.path.join(pkg_dir, "data", case, f"{case}.json")
+MICROGRID_DATA_FILE = lambda case: os.path.join(pkg_dir, "data", case, f"{case}_dataset.csv")
+RESULT_PATH = lambda case: os.path.join(pkg_dir, "data", case, f"{case}.json")
+
+
+def check_type(x):
+    import numpy as np
+    assert isinstance(x, np.float32)

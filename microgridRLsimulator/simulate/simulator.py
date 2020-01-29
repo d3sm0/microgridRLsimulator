@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from microgridRLsimulator.history import Database
+from microgridRLsimulator.history.database import Database
 from microgridRLsimulator.model.grid import Grid
 from microgridRLsimulator.plot import Plotter
 from microgridRLsimulator.simulate.gridaction import GridAction
@@ -41,29 +41,25 @@ class Simulator:
         self.RESULTS_FILE = f"{self.RESULTS_FOLDER}/{case}_out.json"
 
         with open(MICROGRID_CONFIG_FILE, 'rb') as jsonFile:
-            self.data = json.load(jsonFile)
+            self.env_config = json.load(jsonFile)
 
         if params is not None:
-            self.data.update(params)
+            self.env_config.update(params)
 
-        generation = self.data['generators'][1]['min_stable_generation']
+        generation = self.env_config['generators'][1]['min_stable_generation']
         import warnings
         if generation == 0.:
             warnings.warn("min stable generation is 0!")
 
-        self.grid = Grid(self.data)
-        self.objectives = self.data["objectives"]
+        self.grid = Grid(self.env_config)
+        self.objectives = self.env_config["objectives"]
 
         if type(start_date) is str:
             start_date = pd.to_datetime(start_date)
         if type(end_date) is str:
             end_date = pd.to_datetime(end_date)
 
-        self.start_date = start_date
-        self.end_date = end_date
-        self.database = Database(MICROGRID_DATA_FILE, self.grid.get_non_flexible_device_names(),
-                                 date_slice=(start_date, end_date),
-                                 freq=self.grid.period_duration)
+        self.database = Database(MICROGRID_DATA_FILE, (start_date, end_date), freq=self.grid.period_duration)
 
         self.case = case
         # converting dates to datetime object
@@ -72,8 +68,8 @@ class Simulator:
 
         self.env_step = 0
         self.cumulative_cost = 0.
-        self.grid_states = [] # collections.deque(maxlen=1)
-        self.state_features = {k: v for k, v in self.data["features"].items() if v is True}
+        self.grid_states = []  # collections.deque(maxlen=1)
+        self.state_features = {k: v for k, v in self.env_config["features"].items() if v is True}
         print(f"Init simulator {self.case}:{str(start_date), str(end_date)}.\tMax steps:{self.database.max_steps}")
 
     def reset(self):
@@ -84,22 +80,22 @@ class Simulator:
         """
         self.env_step = 0
         self.cumulative_cost = 0.
-        self.grid = Grid(self.data)  # refresh the grid (storage capacity, number of cycles, etc)
+        self.grid = Grid(self.env_config)  # refresh the grid (storage capacity, number of cycles, etc)
         # Initialize a gridstate
         reset_state = self._make_reset_state()
         self.grid_states.append(reset_state)
         return self._decode_state((reset_state,))
 
     def _make_reset_state(self):
-        reset_state = GridState(self.grid, 0.)
+        reset_state = GridState(self.grid, self.database.start_date)
         reset_state.cumulative_cost = self.cumulative_cost
         realized_non_flexible_production = 0.0
         for g in self.grid.generators:
             if not g.steerable:
-                realized_non_flexible_production += self.database.get_columns(g.name, self.start_date)
+                realized_non_flexible_production += self.database.get(g.name, 0)
         realized_non_flexible_consumption = 0.0
         for l in self.grid.loads:
-            realized_non_flexible_consumption += self.database.get_columns(l.name, self.start_date)
+            realized_non_flexible_consumption += self.database.get(l.name, 0)
         # Add in the state the information about renewable generation and demand
         reset_state.non_steerable_production = realized_non_flexible_production
         reset_state.non_steerable_consumption = realized_non_flexible_consumption
@@ -142,7 +138,18 @@ class Simulator:
         self.grid_states.append(next_grid_state)
         # Pass the information about the next state, cost of the previous control actions and termination condition
         # self.grid_states[-(self.data['backcast_steps'] + 1):]
-        return self._decode_state((next_grid_state,)), -multiobj['total_cost'], is_terminal, {'costs': multiobj}
+        actions = (actions.charge[0], actions.discharge[0], actions.generation['Diesel_1'])
+        info = {'costs': multiobj,
+                'action': actions,
+                'production': actual_production,
+                'consumption': actual_consumption,
+                "charge": actual_charge[0],
+                "discharge": actual_discharge[0],
+                "import": actual_import,
+                "export": actual_export,
+                }
+
+        return self._decode_state((next_grid_state,)), -multiobj['total_cost'], is_terminal, info
 
     def check_terminal(self):
         is_terminal = False
@@ -152,7 +159,7 @@ class Simulator:
 
     def gather_action(self, actions):
         if not isinstance(actions, GridAction):
-            if self.data['action_space'].lower() == "discrete":
+            if self.env_config['action_space'].lower() == "discrete":
                 actions = self._construct_action(actions)
             else:
                 actions = self._construct_action_from_list(actions)
@@ -166,12 +173,12 @@ class Simulator:
             if not g.steerable:
                 time = self.env_step * self.grid.period_duration * 60  # time in min (in order to be able to update capacity all min)
                 g.update_capacity(time)
-                realized_non_flexible_production += self.database.get_columns(g.name, p_dt) * (
+                realized_non_flexible_production += self.database.get(g.name, self.env_step) * (
                         g.capacity / g.initial_capacity)
         next_grid_state.res_gen_capacities = [g.capacity for g in self.grid.generators if not g.steerable]
         realized_non_flexible_consumption = 0.0
         for l in self.grid.loads:
-            realized_non_flexible_consumption += self.database.get_columns(l.name, p_dt)
+            realized_non_flexible_consumption += self.database.get(l.name, self.env_step)
         next_grid_state.non_steerable_production = realized_non_flexible_production
         next_grid_state.non_steerable_consumption = realized_non_flexible_consumption
 
@@ -216,8 +223,8 @@ class Simulator:
         actual_generation_cost = {g: 0. for g in self.grid.generators}
         for g in self.grid.generators:
             if g.steerable:
-                actual_generation[g], actual_generation_cost[g] = g.simulate_generator(
-                    actions.conventional_generation[g.name], self.grid.period_duration)
+                actual_generation[g], actual_generation_cost[g] = g.simulate(actions.generation[g.name],
+                                                                             self.grid.period_duration)
         # Record the generation output to the current state
         self.grid_states[-1].generation = list(actual_generation.values())
         # Deduce actual production and consumption based on the control actions taken and the
@@ -244,8 +251,8 @@ class Simulator:
                 self.grid.period_duration
             )
             # Store the computed capacity and level of storage to the next state
-            next_grid_state.capacities[b] = self.grid.storages[b].capacity
-            next_grid_state.n_cycles[b] = self.grid.storages[b].n_cycles
+            # next_grid_state.capacities[b] = self.grid.storages[b].capacity
+            # next_grid_state.n_cycles[b] = self.grid.storages[b].n_cycles
             next_grid_state.state_of_charge[b] = next_soc[b]
         # Record the control actions for the storage devices to the current state
         self.grid_states[-1].charge = actual_charge[:]
@@ -298,7 +305,7 @@ class Simulator:
             json.dump(results, jsonFile)
 
         with open(self.RESULTS_FOLDER + "/mg_config.json", 'w') as jsonFile:
-            json.dump(self.data, jsonFile)
+            json.dump(self.env_config, jsonFile)
 
         if agent_options is not None:
             with open(self.RESULTS_FOLDER + "/agent_options.json", 'w') as jsonFile:
@@ -332,7 +339,7 @@ class Simulator:
         :return: list with default or selected  state features.
         """
 
-        state_list = decode_gridstates(gridstates, self.state_features, self.data['backcast_steps'] + 1)
+        state_list = decode_gridstates(gridstates, self.state_features, self.env_config['backcast_steps'] + 1)
         return state_list
 
     def _construct_action(self, high_level_action):
@@ -363,7 +370,8 @@ class Simulator:
             total_possible_discharge = 0.0
             genset_total_capacity = 0.0
             genset_min_stable_total_capacity = 0.0
-            storages_to_discharge = [i for i, x in enumerate(self.high_level_actions[high_level_action]) if x == "D"]
+            storages_to_discharge = [i for i, x in enumerate(self.high_level_actions[high_level_action]) if
+                                     x == "D"]
             for b in storages_to_discharge:
                 storage = self.grid.storages[b]
                 total_possible_discharge += min(state_of_charge[b] * storage.discharge_efficiency / d,
@@ -372,9 +380,9 @@ class Simulator:
             for g in self.grid.generators:  # TODO sort generators
                 if g.steerable:
                     if net_generation + total_possible_discharge + genset_total_capacity < 0:
-                        genset_min_stable_total_capacity += g.min_stable_generation * g.capacity
+                        genset_min_stable_total_capacity += g.min_stable_generation
                         genset_total_capacity += g.capacity
-                        generation[g.name] = g.min_stable_generation * g.capacity
+                        generation[g.name] = g.min_stable_generation
 
             net_generation += genset_min_stable_total_capacity  # net generation takes into account the min stable production
         if positive(net_generation):
@@ -388,7 +396,8 @@ class Simulator:
                                 storage.max_charge_rate)  # net_generation is already in kW
                 net_generation -= charge[b]
         elif negative(net_generation):
-            storages_to_discharge = [i for i, x in enumerate(self.high_level_actions[high_level_action]) if x == "D"]
+            storages_to_discharge = [i for i, x in enumerate(self.high_level_actions[high_level_action]) if
+                                     x == "D"]
             # if there is deficit, discharge the storage devices that are in Discharge mode by the controller
             for b in storages_to_discharge:
                 storage = self.grid.storages[b]
@@ -402,6 +411,10 @@ class Simulator:
                     additional_generation = min(-net_generation, g.capacity - generation[g.name])
                     generation[g.name] += additional_generation  # Update the production of generator g
                     net_generation += additional_generation  # Update the remaining power to handle
+
+        charge = [max(0, c) for c in charge]
+        discharge = [max(0, c) for c in discharge]
+        generation = {k: max(0, v) for k, v in generation.items()}
         return GridAction(generation, charge, discharge)
 
     def _construct_action_from_list(self, actions_list):
@@ -411,6 +424,9 @@ class Simulator:
         :return: A GridAction object.
 
         """
+        # charge = abs(min(actions_list[0], 0))
+        # discharge = abs(max(actions_list[0], 0))
+
         n_storages = len(self.grid.storages)
         generation = {g.name: 0. for g in self.grid.generators if g.steerable}
         charge = actions_list[:n_storages]
