@@ -3,6 +3,8 @@ from microgridRLsimulator.utils import positive, TOL_IS_ZERO
 
 
 class Storage(Device):
+    storage_type = "Storage"
+
     def __init__(self, name, params):
         """
 
@@ -25,10 +27,6 @@ class Storage(Device):
         assert (self.capacity is not None)
         assert (self.max_charge_rate is not None)
         assert (self.max_discharge_rate is not None)
-
-    @staticmethod
-    def type():
-        return "Storage"
 
     def actual_power(self, charge_action, discharge_action):
         """
