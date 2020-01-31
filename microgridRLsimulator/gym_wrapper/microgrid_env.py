@@ -11,6 +11,7 @@ from gym.utils import seeding
 
 from microgridRLsimulator.simulate import _simulator2 as simulator
 from microgridRLsimulator.simulate.gridaction import GridAction
+import copy
 
 
 class MicrogridEnv(gym.Env):
@@ -38,6 +39,9 @@ class MicrogridEnv(gym.Env):
 
     def set_state(self, state):
         self.simulator.set_state(state)
+
+    def get_state(self):
+        return copy.deepcopy(self.simulator.grid_state)
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
