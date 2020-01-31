@@ -17,8 +17,9 @@ class GridAction:
 def _construct_action_from_list(action, n_storages):
     assert isinstance(action, np.ndarray) and np.all(action >= 0), f"Wrong action format {action}"
     charge = action[:1].item()
-    discharge = action[n_storages:2 * n_storages].item()
-    gen = action[2 * n_storages:].item()
+    charge = max(0, charge)
+    discharge = max(0, -charge)
+    gen = action[1:].item()
     gen = dict(gen=gen)
     return GridAction(gen, charge, discharge)
 

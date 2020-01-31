@@ -1,3 +1,4 @@
+import numpy as np
 class Storage:
     storage_type = "Storage"
 
@@ -13,6 +14,7 @@ class Storage:
         assert charge >= 0 and discharge >= 0 and soc >= 0
 
         soc = min(soc, self.capacity)
+
         if charge > 0:
             self.update_cycle(charge * self.charge_efficiency, dt)
             soc_tp1 = soc + charge * dt * self.charge_efficiency
@@ -62,13 +64,28 @@ class DCAStorage(Storage):
         self.max_charge_rate = params['max_charge_rate']
         self.max_discharge_rate = params['max_discharge_rate']
         self.operating_point = params['operating_point']
+        self.max_downtime = params['max_downtime'] # hour
+        self.prob_failure = params['prob_failure']
+        self.downtime = 0
 
     def update_capacity(self):
-        self.capacity = self.initial_capacity + (
-                self.initial_capacity * (self.operating_point[1] - 1) / self.operating_point[0]) * self.n_cycles
+        if self.capacity > 0:
+            self.capacity = self.initial_capacity + (
+                    self.initial_capacity * (self.operating_point[1] - 1) / self.operating_point[0]) * self.n_cycles
+        elif self.downtime == self.max_downtime:
+            self.reset()
+        else:
+            self.downtime += 1
+
 
     def update_cycle(self, throughput, dt):
-        self.n_cycles += throughput * dt / (2 * self.capacity)
+        if self.capacity > 0:
+            self.n_cycles += throughput * dt / (2 * self.capacity)
+
+    def power_off(self):
+        if self.prob_failure > np.random.uniform() and self.capacity:
+            self.capacity = 0
+            self.downtime = 0
 
     def max_charge(self):
         return self.capacity * self.max_charge_rate / 100.

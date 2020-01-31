@@ -88,7 +88,7 @@ class Grid:
         for k, v in state.items():
             attr = getattr(self, k)
             for k, v in v.items():
-                setattr(self, attr, v)
+                setattr(attr, k, v)
 
     def reset(self):
         self.epv.reset()
@@ -96,8 +96,8 @@ class Grid:
         self.storage.reset()
 
     def gather_action_space(self):
-        high = np.array([self.storage.max_charge(), self.storage.max_discharge(), self.engine.capacity], np.float32)
-        low = np.zeros_like(high)
+        high = np.array([self.storage.max_charge(), self.engine.capacity], np.float32)
+        low = np.array([self.storage.max_discharge(), 0.], np.float32)
         return low, high
 
     def gather_observation_space(self):
@@ -108,11 +108,11 @@ class Grid:
 
 class GridState:
     def __init__(self, soc=0, epv=0, demand=0, time_step=0, grid_status=None):
-        self.grid_status = grid_status
         self.soc = soc
         self.epv = epv
         self.demand = demand
         self.time_step = time_step
+        self.grid_status = grid_status
 
     def as_numpy(self):
         return _decode_state(self)
@@ -134,21 +134,28 @@ class Simulator:
         self.cost = 0
         self.grid_state = None
 
-        self._output_path = None
-        self._actions = []
-        self._infos = collections.defaultdict(lambda: [])
-        self._render = False
-
         print(f"Init simulator {case}:{str(self.grid.db.start_date), str(self.grid.db.end_date)})")
         print(f"\tMax steps:{self.grid.db.max_steps}")
+
+    def sample(self):
+
+        step = np.random.randint(0, self.grid.db.max_steps-1)
+        epv = self.grid.get_production(step)
+        demand = self.grid.get_consumption(step)
+        soc = np.random.uniform(0., self.grid.storage.capacity)
+        state = GridState(epv=epv,
+                demand=demand,
+                soc=soc,
+                grid_status=self.grid.get_grid_status(),time_step=step)
+        self.set_state(state)
+        return state.as_numpy()
 
     def reset(self):
         self.grid.reset()
 
         self.env_step = 0
         self.cost = 0
-        self._actions = []
-        self._infos = collections.defaultdict(lambda: [])
+        self.start = 0
 
         epv, demand = self._update_demand_epv()
         state = GridState(epv=epv, demand=demand, grid_status=self.grid.get_grid_status(),
@@ -168,7 +175,7 @@ class Simulator:
 
     def set_state(self, grid_state):
         self.grid_state = grid_state
-        self.env_step = self.grid_state.env_step
+        self.env_step = self.grid_state.time_step
         self.grid.set_grid_state(grid_state.grid_status)
 
     def _step(self, action):
@@ -184,20 +191,19 @@ class Simulator:
 
         self.grid_state = GridState(soc=soc_tp1, epv=epv, demand=demand, time_step=self.env_step,
                                     grid_status=self.grid.get_grid_status())
-        done = self._is_terminal()
 
         action = (action.charge, action.discharge, action.generation['gen'])
 
-        self._actions.append(action)
         self.cost += multi_obj['total_cost']
 
-        info = self._make_info(_export, _import, charge, consumption, discharge, production, generation)
-        info.update(multi_obj)
-        self._record_env_statistics(info, action)
+        info = self._make_info(_export, _import, charge, consumption, discharge, production, generation, action)
 
-        return self.grid_state.as_numpy(), -multi_obj['total_cost'], done, info
+        #self.grid.storage.power_off()
 
-    def _make_info(self, _export, _import, charge, consumption, discharge, production, generation):
+
+        return self.grid_state.as_numpy(), -multi_obj['total_cost'], self._is_terminal(), info
+
+    def _make_info(self, _export, _import, charge, consumption, discharge, production, generation, action):
         dt = self.grid.db.time_to_idx[self.env_step]
         dt = dt.strftime('%Y-%m-%d %H:%M:%S')
         info = {
@@ -218,20 +224,9 @@ class Simulator:
         }
         return info
 
-    def _record_env_statistics(self, info, action):
-        if self._render is False:
-            return
-        for k, v in info.items():
-            if not isinstance(v, str):
-                v = float(v)
-            self._infos[k].append(v)
-        self._actions.append(action)
 
     def _is_terminal(self):
-        is_terminal = False
-        if self.env_step == self.grid.db.max_steps - 1:
-            is_terminal = True
-        return is_terminal
+        return self.env_step == self.grid.db.max_steps  -1
 
     def _compute_next_storage(self, action):
         soc_tp1, charge, discharge = self.grid.storage.simulate(self.grid_state.soc,
