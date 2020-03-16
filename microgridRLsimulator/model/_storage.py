@@ -14,9 +14,7 @@ class Storage:
 
     def _simulate(self, soc, charge, discharge, dt):
         assert charge >= 0 and discharge >= 0 and soc >= 0
-
         soc = min(soc, self.capacity)
-
         if charge > 0:
             self.update_cycle(charge * self.charge_efficiency, dt)
             soc_tp1 = soc + charge * dt * self.charge_efficiency
@@ -29,8 +27,8 @@ class Storage:
             discharge = (soc - soc_tp1) * (self.discharge_efficiency / dt)
         else:
             soc_tp1 = soc
+        assert charge >= 0 and discharge >= 0 and soc_tp1 >= 0, f"{charge, discharge, soc_tp1}"
 
-        assert charge >= 0 and discharge >= 0 and soc_tp1 >= 0, "something is wrong here"
         return soc_tp1, charge, discharge
 
     def update_cycle(self, throughput, dt):
@@ -42,6 +40,7 @@ class Storage:
     def simulate(self, soc, charge, discharge, dt):
         charge, discharge = _power(charge, discharge)
         self.update_capacity()
+        assert charge >= 0 and discharge >= 0 and soc >= 0, f"{charge, discharge, soc}"
         soc_tp1, charge, discharge = self._simulate(soc, charge, discharge, dt)
         return soc_tp1, charge, discharge
 
@@ -73,10 +72,11 @@ class DCAStorage(Storage):
 
     def update_capacity(self):
         if self.capacity > 0:
-            self.capacity = self.initial_capacity + (
-                    self.initial_capacity * (self.operating_point[1] - 1) / self.operating_point[0]) * self.n_cycles
+            self.capacity = self.initial_capacity + ( self.initial_capacity * (self.operating_point[1] - 1) / self.operating_point[0]) * self.n_cycles
+            self.capacity = max(0, self.capacity)
         else:
             self.downtime += 1
+            self.capacity = 0
 
     def simulate(self, soc, charge, discharge, dt):
         if self.is_stochastic:

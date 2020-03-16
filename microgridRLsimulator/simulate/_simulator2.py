@@ -9,7 +9,8 @@ from microgridRLsimulator.model._generator import Diesel, EPV
 from microgridRLsimulator.model._storage import DCAStorage
 from microgridRLsimulator.plot import render
 from microgridRLsimulator.simulate.gridaction import GridAction
-from microgridRLsimulator.simulate.gridaction import _construct_action_, _construct_action_from_list
+from microgridRLsimulator.simulate.gridaction import _construct_action_, _construct_action_from_list, \
+    binned_action_space, _construct_charge_action
 from microgridRLsimulator.utils import MICROGRID_CONFIG_FILE
 
 
@@ -43,6 +44,7 @@ def check_json(value):
         return True
     except TypeError:
         return False
+
 
 import collections
 
@@ -91,6 +93,8 @@ class Grid:
         self.epv = EPV(params['generators'][0])
         self.engine = Diesel(params['generators'][1])
 
+        #self._action_space_dict = binned_action_space((self.storage.max_discharge(), self.engine.capacity))
+
     def get_production(self, time):
         _time = time * self.dt * 60
         self.epv.update_capacity(_time)
@@ -118,11 +122,12 @@ class Grid:
         self.storage.reset()
 
     def gather_action_space(self):
-        high = np.array([
-            self.storage.max_charge(),
-            self.storage.max_discharge(),
-            self.engine.capacity], np.float32)
-        low = np.array([0., 0., 0.], np.float32)
+
+        high = np.array([self.storage.max_charge()], np.float32)
+        low = np.array([-self.storage.max_discharge()], np.float32)
+
+        # high = np.array([self.storage.max_charge(), self.engine.capacity], np.float32)
+        # low = np.array([self.storage.max_discharge(), 0.], np.float32)
         return low, high
 
     def gather_observation_space(self):
@@ -164,6 +169,7 @@ class Simulator:
 
         self._action_cluster = data
         # self._action_list = sorted(list(self._action_cluster.keys()))
+        #self._action_list = list(self.grid._action_space_dict.keys())  # list(range(3))
         self._action_list = list(range(3))
 
         self.env_step = 0
@@ -243,7 +249,9 @@ class Simulator:
         info.update(multi_obj)
 
         self.infos.append(info)
-        return self.grid_state.as_numpy(), -multi_obj['total_cost'], self._is_terminal(), info
+        reward = -multi_obj['total_cost']
+        assert isinstance(reward, float)
+        return self.grid_state.as_numpy(),reward , self._is_terminal(), info
 
     def plot(self, path):
         infos = _list_to_dict(self.infos)
@@ -303,8 +311,12 @@ class Simulator:
         action_bound = self.grid.gather_action_space()
         if not isinstance(action, GridAction):
             if self.env_config['action_space'].lower() == "discrete":
+
+                #action = self.grid._action_space_dict[action]
+                #
                 action = _construct_action_(action, self.grid_state, self.grid)
                 # action = _construct_action_from_cluster(action, self._action_cluster, action_bound)
             else:
-                action = _construct_action_from_list(action, self.grid.n_storages, action_bound)
+               # action = _construct_action_from_list(action, self.grid.n_storages, action_bound)
+                action = _construct_charge_action(action, self.grid_state, self.grid)
         return action

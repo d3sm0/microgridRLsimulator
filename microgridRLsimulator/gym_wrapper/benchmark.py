@@ -9,6 +9,13 @@ def make_benchmark():
 
     for month_idx, month in enumerate(months):
         task[base_key(month)] = fmt(month_idx + 1)
+
+    task.update( {
+        "MicroGrid-May-2018-v0":("2018-05-01", "2016-05-28"),
+        "MicroGrid-Jul-2018-v0":("2018-07-01", "2016-07-28"),
+        "MicroGrid-Aug-2018-v0":("2018-08-01", "2016-08-28")
+     })
+
     return task
 
 

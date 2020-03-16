@@ -9,9 +9,27 @@ from microgridRLsimulator.utils import check_type
 class GridAction:
     def __init__(self, generation, charge, discharge):
         # not sure if this should be  adict
+        # assert isinstance(generation, dict) and isinstance(charge, float) and isinstance(discharge,float )
         self.generation = generation
         self.charge = charge
         self.discharge = discharge
+
+
+def binned_action_space(action_space, n_bins=10):
+    charge, generator = action_space
+    discharge = charge
+    charge_bins = np.linspace(0, charge, n_bins)
+    discharge_bins = np.logspace(0, discharge, n_bins)
+    gen_bins = np.linspace(0, generator, n_bins)
+    charge_battery = list(itertools.product(charge_bins, gen_bins))
+
+    charge = [GridAction({'gen': 0}, c.item(), 0) for c in charge_bins]
+    discharge = [GridAction({'gen': 0}, 0, d.item()) for d in discharge_bins]
+    charge_battery = [GridAction({'gen': g.item()}, c.item(), 0) for c, g in charge_battery]
+
+    action_space = charge + discharge + charge_battery
+    action_space_idx_to_dict = {idx: a for idx, a in enumerate(action_space)}
+    return action_space_idx_to_dict
 
 
 def _construct_action_from_cluster(action, cluster, action_bound):
@@ -48,6 +66,29 @@ def _infer_high_level_actions(n_storages):
     combos_exclude_simul = list(filter(lambda x: not ('D' in x and 'C' in x), combinations_list))
 
     return combos_exclude_simul
+
+
+def _construct_charge_action(action, state, grid):
+    discharge = 0
+    gen = 0
+    charge = 0
+    action = action.item()
+    net = state.epv - state.demand
+    if action < 0:  # discharging
+        action = abs(action)
+        max_discharge = min(state.soc * grid.storage.discharge_efficiency / grid.dt, grid.storage.max_discharge_rate)
+        discharge = min(abs(net), action, max_discharge)
+    else:
+        gen = max(0, min(action, grid.engine.capacity))
+        total_energy = gen + net
+        charge = max(0, total_energy)
+        if charge > 0:
+            ds = grid.storage.capacity - state.soc
+            charge = min(ds / (grid.dt * grid.storage.charge_efficiency), charge, grid.storage.max_charge_rate)
+
+    assert (gen >= 0 and charge >= 0 and discharge >= 0), f"{charge}, {discharge}, {gen}"
+
+    return GridAction({'gen': gen}, charge, discharge)
 
 
 def _construct_action(high_level_action, state, grid):
@@ -144,11 +185,11 @@ def _construct_action_(action, state, grid):
                          grid.storage.max_charge_rate)
             net_generation -= charge
             assert charge >= 0
-        #else:
-        #    discharge = min(soc * grid.storage.discharge_efficiency / grid.dt, production,
-        #                    grid.storage.max_discharge_rate)
+        # else:
+        #     discharge = min(soc * grid.storage.discharge_efficiency / grid.dt, production,
+        #                     grid.storage.max_discharge_rate)
 
-        #    net_generation += discharge
+        #     net_generation += discharge
 
     elif net_generation < 0:
         if action == "D":
@@ -166,4 +207,3 @@ def _construct_action_(action, state, grid):
     assert charge >= 0 and discharge >= 0 and generation['gen'] >= 0
     action = GridAction(generation, charge, discharge)
     return action
-

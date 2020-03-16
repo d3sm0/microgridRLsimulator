@@ -26,7 +26,8 @@ class Database:
             df = df.resample(str(self.freq) + 'h').apply(np.mean)
 
         assert df.index.is_monotonic, f"DateTime index is not monotonic for {path}"
-        assert pd.isna(df).sum().sum() == 0, "Found Nan in dataset"
+        df = df.dropna()
+        #assert pd.isna(df).sum().sum() == 0, "Found Nan in dataset"
         self.values = df.values.astype(np.float32)
         self.time_to_idx = df.index.tolist()
         self.device = df.columns.tolist()
@@ -41,7 +42,7 @@ class Database:
         return df
 
     def get(self, device, idx):
-        assert not isinstance(idx, pd.datetime), "idx must be int or a slice"
+        assert isinstance(idx, int) or isinstance(idx, slice), "idx must be int or a slice"
         assert device in self.device, "device not in columns"
         assert idx < self.max_steps
         # this could be avoided by using enum
