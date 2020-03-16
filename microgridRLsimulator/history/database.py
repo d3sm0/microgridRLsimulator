@@ -5,6 +5,8 @@ from microgridRLsimulator.utils import MICROGRID_DATA_FILE
 import pandas as pd
 
 
+to_datetime = pd.to_datetime
+
 class Database:
     def __init__(self, path_to_csv, date_slice, freq=None):
         self.time_to_idx = None
@@ -33,6 +35,7 @@ class Database:
         data_start = df.first_valid_index()
         data_end = df.last_valid_index()
         start_date, end_date = date_slice
+        start_date = max(data_start,start_date)
         check_date(start_date, end_date, data_start, data_end)
         df = df.loc[start_date:end_date]
         return df

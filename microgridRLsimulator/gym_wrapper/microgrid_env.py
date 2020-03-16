@@ -44,12 +44,17 @@ class MicrogridEnv(gym.Env):
         return copy.deepcopy(self.simulator.grid_state)
 
     def seed(self, seed=None):
+        np.random.seed(seed)
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
     def reset(self):
         self.state = self.simulator.reset()
         return self._observation(self.state)
+
+    def render(self, path):
+        print(f"Plots store in {path}")
+        self.simulator.plot(path)
 
     def step(self, action):
         """
@@ -68,7 +73,7 @@ class MicrogridEnv(gym.Env):
 
 def make_action_space(simulator):
     if simulator.env_config['action_space'].lower() == "discrete":
-        return spaces.Discrete(3)
+        return spaces.Discrete(len(simulator._action_list))
     lower, upper = simulator.grid.gather_action_space()
     action_space = spaces.Box(lower, upper, dtype=np.float32)
     return action_space

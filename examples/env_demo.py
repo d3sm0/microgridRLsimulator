@@ -17,12 +17,15 @@ def main():
         "action_space": "Discrete",
         "backcast_steps": 0,
         "forecast_steps": 0,
-        "forecast_type": "exact"}
+        "forecast_type": "exact",
+        "min_stable_generation": 0.,
+        "prob_failure": 0.9
+    }
 
     import time
     env = MicrogridEnv(**env_init, params=params)
     sum_reward = 0
-    T = 1000
+    T = 50
     dt = []
     start = time.perf_counter()
     state = env.reset()
@@ -37,7 +40,7 @@ def main():
             print(sum_reward)
             break
     # Store and plot
-    # env.simulator.store_and_plot()
+    env.render("plots/")
 
 
 if __name__ == '__main__':

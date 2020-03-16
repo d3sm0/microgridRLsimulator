@@ -43,6 +43,7 @@ class Simulator:
         with open(MICROGRID_CONFIG_FILE, 'rb') as jsonFile:
             self.env_config = json.load(jsonFile)
 
+        import ipdb; ipdb.set_trace()
         if params is not None:
             self.env_config.update(params)
 
@@ -223,7 +224,7 @@ class Simulator:
         actual_generation_cost = {g: 0. for g in self.grid.generators}
         for g in self.grid.generators:
             if g.steerable:
-                actual_generation[g], actual_generation_cost[g] = g.simulate(actions.generation[g.name],
+                actual_generation[g], actual_generation_cost[g] = g.simulate_generator(actions.generation[g.name],
                                                                              self.grid.period_duration)
         # Record the generation output to the current state
         self.grid_states[-1].generation = list(actual_generation.values())
@@ -380,7 +381,7 @@ class Simulator:
             for g in self.grid.generators:  # TODO sort generators
                 if g.steerable:
                     if net_generation + total_possible_discharge + genset_total_capacity < 0:
-                        genset_min_stable_total_capacity += g.min_stable_generation
+                        genset_min_stable_total_capacity += g.min_stable_generation * g.capacity
                         genset_total_capacity += g.capacity
                         generation[g.name] = g.min_stable_generation
 

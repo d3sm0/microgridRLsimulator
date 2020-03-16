@@ -1,4 +1,6 @@
 import numpy as np
+
+
 class Storage:
     storage_type = "Storage"
 
@@ -64,28 +66,40 @@ class DCAStorage(Storage):
         self.max_charge_rate = params['max_charge_rate']
         self.max_discharge_rate = params['max_discharge_rate']
         self.operating_point = params['operating_point']
-        self.max_downtime = params['max_downtime'] # hour
+        self.max_downtime = params['max_downtime']  # hour
         self.prob_failure = params['prob_failure']
+        self.is_stochastic = bool(self.prob_failure)
         self.downtime = 0
 
     def update_capacity(self):
         if self.capacity > 0:
             self.capacity = self.initial_capacity + (
                     self.initial_capacity * (self.operating_point[1] - 1) / self.operating_point[0]) * self.n_cycles
-        elif self.downtime == self.max_downtime:
-            self.reset()
         else:
             self.downtime += 1
 
+    def simulate(self, soc, charge, discharge, dt):
+        if self.is_stochastic:
+            self.power_off()
+        next_state = super(DCAStorage, self).simulate(soc, charge, discharge, dt)
+        self.repair()
+        return next_state
 
     def update_cycle(self, throughput, dt):
         if self.capacity > 0:
             self.n_cycles += throughput * dt / (2 * self.capacity)
 
+    def repair(self):
+        if self.downtime == self.max_downtime and self.capacity == 0:
+            self.reset()
+            self.prob_failure = 0.
+
     def power_off(self):
-        if self.prob_failure > np.random.uniform() and self.capacity:
+        if self.prob_failure > np.random.uniform() and self.capacity > 0:
             self.capacity = 0
             self.downtime = 0
+        elif self.capacity > 0:
+            self.prob_failure = min(self.prob_failure + 1 / self.capacity, 1.)
 
     def max_charge(self):
         return self.capacity * self.max_charge_rate / 100.

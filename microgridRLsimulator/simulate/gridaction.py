@@ -14,12 +14,21 @@ class GridAction:
         self.discharge = discharge
 
 
-def _construct_action_from_list(action, n_storages):
+def _construct_action_from_cluster(action, cluster, action_bound):
+    _action = cluster[action]
+    _action = np.random.normal(_action['mean'], _action['std'])
+    _action = np.clip(_action, *action_bound)
+    charge, discharge, gen = _action
+    gen = {'gen': gen}
+    return GridAction(gen, charge, discharge)
+
+
+def _construct_action_from_list(action, n_storages, action_bound):
     assert isinstance(action, np.ndarray) and np.all(action >= 0), f"Wrong action format {action}"
+    action = np.clip(action, *action_bound)
     charge = action[:1].item()
-    charge = max(0, charge)
-    discharge = max(0, -charge)
-    gen = action[1:].item()
+    discharge = action[n_storages:2 * n_storages].item()
+    gen = action[2 * n_storages:].item()
     gen = dict(gen=gen)
     return GridAction(gen, charge, discharge)
 
@@ -135,6 +144,11 @@ def _construct_action_(action, state, grid):
                          grid.storage.max_charge_rate)
             net_generation -= charge
             assert charge >= 0
+        #else:
+        #    discharge = min(soc * grid.storage.discharge_efficiency / grid.dt, production,
+        #                    grid.storage.max_discharge_rate)
+
+        #    net_generation += discharge
 
     elif net_generation < 0:
         if action == "D":
@@ -152,5 +166,4 @@ def _construct_action_(action, state, grid):
     assert charge >= 0 and discharge >= 0 and generation['gen'] >= 0
     action = GridAction(generation, charge, discharge)
     return action
-
 

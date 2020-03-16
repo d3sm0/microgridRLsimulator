@@ -22,3 +22,8 @@ microgrid_tensorboard/
 
 __pycache__
 .idea
+.git
+*.egg-info
+*.pyc
+microgridRLsimulator/data/*
+!microgridRLsimulator/data/elespino/
