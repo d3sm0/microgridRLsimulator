@@ -19,17 +19,17 @@ def main():
         "forecast_steps": 0,
         "forecast_type": "exact",
         "min_stable_generation": 0.,
-        "prob_failure": 0.9
+        "prob_failure": 0.0
     }
 
     import time
     env = MicrogridEnv(**env_init, params=params)
+    env.seed(0)
     sum_reward = 0
-    T = 50
     dt = []
     start = time.perf_counter()
     state = env.reset()
-    for tt in range(T):
+    while True:
         # print("state: ", state)
         action = env.action_space.sample()
         next_state, reward, done, info = env.step(action)

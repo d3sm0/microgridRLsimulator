@@ -1,4 +1,4 @@
-from microgridRLsimulator.simulate._simulator2 import Simulator as _Simulator
+from microgridRLsimulator.simulate.simulator import Simulator as _Simulator
 from microgridRLsimulator.simulate.simulator import Simulator
 import numpy as np
 

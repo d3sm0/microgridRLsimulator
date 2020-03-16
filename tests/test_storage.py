@@ -1,5 +1,5 @@
 from microgridRLsimulator.model.DCAstorage import DCAStorage
-from microgridRLsimulator.simulate._simulator2 import _DCAStorage
+from microgridRLsimulator.simulate.simulator import _DCAStorage
 
 storage_params = {
     "capacity": 120.0,

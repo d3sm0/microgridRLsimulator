@@ -3,14 +3,14 @@ The model package defines all classes that are used to represent a microgridRLsi
 It mainly contains data and a few useful methods.
 """
 
-from .grid import Grid
+#from .grid import Grid
 from .device import Device
 from .generator import Generator
 from .load import Load
 from .storage import Storage
 
 __all__ = [
-    'Grid',
+    #'Grid',
     'Device',
     'Generator',
     'Load',

@@ -4,8 +4,18 @@ from microgridRLsimulator.utils import MICROGRID_DATA_FILE
 
 import pandas as pd
 
-
 to_datetime = pd.to_datetime
+
+
+def _slice_dataset(date_slice, df):
+    data_start = df.first_valid_index()
+    data_end = df.last_valid_index()
+    start_date, end_date = date_slice
+    start_date = max(data_start, start_date)
+    check_date(start_date, end_date, data_start, data_end)
+    df = df.loc[start_date:end_date]
+    return df
+
 
 class Database:
     def __init__(self, path_to_csv, date_slice, freq=None):
@@ -16,38 +26,27 @@ class Database:
         self.start_date, self.end_date = date_slice
         self.freq = freq
         self._read_data(path_to_csv)
-        self.max_steps = len(self.time_to_idx)
 
     def _read_data(self, path):
         df = pd.read_csv(path, sep=";|,", parse_dates=True, index_col='DateTime', engine='python')
 
-        df = self._slice_dataset((self.start_date, self.end_date), df)
+        df = _slice_dataset((self.start_date, self.end_date), df)
         if self.freq is not None:
             df = df.resample(str(self.freq) + 'h').apply(np.mean)
 
         assert df.index.is_monotonic, f"DateTime index is not monotonic for {path}"
-        df = df.dropna()
-        #assert pd.isna(df).sum().sum() == 0, "Found Nan in dataset"
+        df = check_na(df)
         self.values = df.values.astype(np.float32)
         self.time_to_idx = df.index.tolist()
         self.device = df.columns.tolist()
-
-    def _slice_dataset(self, date_slice, df):
-        data_start = df.first_valid_index()
-        data_end = df.last_valid_index()
-        start_date, end_date = date_slice
-        start_date = max(data_start,start_date)
-        check_date(start_date, end_date, data_start, data_end)
-        df = df.loc[start_date:end_date]
-        return df
+        self.max_steps = len(self.time_to_idx)
 
     def get(self, device, idx):
         assert isinstance(idx, int) or isinstance(idx, slice), "idx must be int or a slice"
         assert device in self.device, "device not in columns"
-        assert idx < self.max_steps
-        # this could be avoided by using enum
+        assert idx < self.max_steps, "out of samples"
         device = self.device.index(device)
-        return self.values[idx, device].astype(np.float32)
+        return self.values[idx, device].astype(np.float32).item()
 
 
 def load_db(start_date, end_date, case, freq=1):
@@ -61,9 +60,14 @@ def load_db(start_date, end_date, case, freq=1):
     return database
 
 
+def check_na(df):
+    total_nas = pd.isna(df)
+    if total_nas.sum().sum() != 0:
+        print(f"Found nas {total_nas}. Dropping them. Check the dataset.")
+        df.dropna(inplace=True)
+    return df
+
 def check_date(start_date, end_date, data_start_date, data_end_date):
     assert (start_date < end_date), "The end date is before the start date."
     assert (data_start_date <= start_date < data_end_date), "Invalid start date."
     assert (data_start_date < end_date <= data_end_date), "Invalid end date."
-
-
