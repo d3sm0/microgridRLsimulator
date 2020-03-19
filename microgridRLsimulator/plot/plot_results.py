@@ -1,11 +1,12 @@
-import os
-import string
-from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
-# import mpld3
-import numpy as np
 import json
+import os
 import sys
+from datetime import datetime
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+# import mpld3
 
 plt.style.use('bmh')
 
@@ -20,6 +21,8 @@ class Plotter:
         :param results: A json type dictionary containing results
         :param case: Name of the case, as a string
         """
+        assert isinstance(results, dict)
+
         self.results = results
         self.case = case
         self.savefigs = savefigs
@@ -33,7 +36,7 @@ class Plotter:
         xticks = range(0, len(dates), xstep)
         return xticks, xtick_labels
 
-    def plot_results(self, from_date=None, to_date=None, case=None):
+    def plot_results(self, from_date=None, to_date=None):
 
         if from_date is None:
             from_date = self.dates[0]
@@ -56,91 +59,90 @@ class Plotter:
                    self.plot_power_mix(start, end),
                    self.plot_res(start, end)]
 
-        if case is not None:
-            for fig in figures:
-                fig.suptitle(case)
+        for fig in figures:
+            fig.suptitle(self.case)
 
         # if self.savefigs:
         #     with open('%s_resutls.html' % self.case, 'w') as f:
         #         f.write("".join([mpld3.fig_to_html(fig) for fig in figures]))
 
-        if self.results['avg_rewards']:
+        if "avg_rewards" in self.results.keys():
             self.plot_learning_progress()
 
     def plot_res(self, start, end):
 
         xticks, xticks_labels = self.get_ticks(start, end)
 
-        for g in range(len(self.results["res_gen_capacity"][0])):
-            res_gen = [x for x in self.results["non_steerable_production"][start:end]]
-            capacity = [x[g] for x in self.results["res_gen_capacity"][start:end]]
+        capacity = self.results["res_gen_capacity"][start:end]
+        res_gen = self.results["non_steerable_production"][start:end]
 
-            fig = plt.figure(figsize=(16, 9))
+        fig = plt.figure(figsize=(16, 9))
 
-            ax1 = plt.subplot(1, 1, 1)
-            ax1.set_ylabel('kW', fontsize=FONT_SIZE)
-            ax1.plot(capacity, label="Capacity")
-            ax1.plot(res_gen, label="RES production", drawstyle="steps-post")
-            ax1.set_xticks(xticks)
-            ax1.set_xticklabels(xticks_labels)
-            ax1.legend(fontsize=FONT_SIZE)
-            fig.autofmt_xdate()
-            if self.savefigs:
-                fig.savefig('%s_res_gen.pdf' % self.case)
-                ax1.set_xticklabels(list(range(len(res_gen))))
+        ax1 = plt.subplot(1, 1, 1)
+        ax1.set_ylabel('kW', fontsize=FONT_SIZE)
+        ax1.plot(capacity, label="Capacity")
+        ax1.plot(res_gen, label="RES production", drawstyle="steps-post")
+        ax1.set_xticks(xticks)
+        ax1.set_xticklabels(xticks_labels)
+        ax1.legend(fontsize=FONT_SIZE)
+        fig.autofmt_xdate()
+        if self.savefigs:
+            fig.savefig(f"{self.case}_res_gen.pdf")
+            ax1.set_xticklabels(list(range(len(res_gen))))
 
-            return fig
+        return fig
 
     def plot_batteries(self, start, end):
 
         xticks, xticks_labels = self.get_ticks(start, end)
 
-        for b in range(len(self.results["soc"][0])):
-            soc = [x[b] for x in self.results["soc"][start:end]]
-            capacity = [x[b] for x in self.results["capacity"][start:end]]
-            charge = [-x[b] for x in self.results["charge"][start:end]]
-            discharge = [x[b] for x in self.results["discharge"][start:end]]
+        soc = self.results["soc"][start:end]
+        capacity = self.results["capacity"][start:end]
+        charge = self.results["charge"][start:end]
+        discharge = self.results["discharge"][start:end]
 
-            fig = plt.figure(figsize=(16, 9))
+        fig = plt.figure(figsize=(16, 9))
 
-            ax1 = plt.subplot(2, 1, 1)
-            ax1.set_ylabel('kWh', fontsize=FONT_SIZE)
-            ax1.plot(capacity, label="Capacity")
-            ax1.plot(soc, 'k', label="State of charge")
-            ax1.set_xticks(xticks)
-            ax1.set_xticklabels(xticks_labels)
-            ax1.legend(fontsize=FONT_SIZE)
+        ax1 = plt.subplot(2, 1, 1)
+        ax1.set_ylabel('kWh', fontsize=FONT_SIZE)
+        ax1.plot(capacity, label="Capacity")
+        ax1.plot(soc, 'k', label="State of charge")
+        ax1.set_xticks(xticks)
+        ax1.set_xticklabels(xticks_labels)
+        ax1.legend(fontsize=FONT_SIZE)
 
-            ax2 = plt.subplot(2, 1, 2, sharex=ax1)
-            ax2.set_ylabel('kW', fontsize=FONT_SIZE)
-            ax2.plot(discharge, label="Discharge", drawstyle='steps-post')
-            ax2.plot(charge, label="Charge", drawstyle='steps-post')
-            ax2.set_ylim([min(charge) * 1.1 - 1e-3, max(discharge) * 1.1 + 1e-3])
-            ax2.legend(fontsize=FONT_SIZE)
-            # ax2.axhline(y=0, color='k', lw=0.5)
+        ax2 = plt.subplot(2, 1, 2, sharex=ax1)
+        ax2.set_ylabel('kW', fontsize=FONT_SIZE)
+        ax2.plot(discharge, label="Discharge", drawstyle='steps-post')
+        ax2.plot(charge, label="Charge", drawstyle='steps-post')
+        ax2.set_ylim([min(charge) * 1.1 - 1e-3, max(discharge) * 1.1 + 1e-3])
+        ax2.legend(fontsize=FONT_SIZE)
+        # ax2.axhline(y=0, color='k', lw=0.5)
 
-            fig.autofmt_xdate()
-            if self.savefigs:
-                fig.savefig('%s_battery_%d_soc.pdf' % (self.case, b))
+        fig.autofmt_xdate()
+        if self.savefigs:
+            fig.savefig(f'{self.case}_battery_soc.pdf')
 
-                ax1.set_xticklabels(list(range(len(discharge))))
-                ax2.set_xticklabels(list(range(len(discharge))))
+            ax1.set_xticklabels(list(range(len(discharge))))
+            ax2.set_xticklabels(list(range(len(discharge))))
 
-            return fig
+        return fig
 
     def plot_costs(self, start, end):
 
         xticks, xticks_labels = self.get_ticks(start, end)
 
-        cum_total_cost = self.results["cum_total_cost"][start:end]
-        energy_cost = self.results["energy_cost"][start:end]
+        cum_total_cost = np.array(self.results["cumulative_cost"][start:end])
+        energy_cost = np.array(self.results["cumulative_cost"][start:end])
         fuel_cost = np.array(self.results["fuel_cost"][start:end])
-        curtailment_cost = np.array(self.results["curtailment_cost"][start:end])
-        load_not_served_cost = np.array(self.results["load_not_served_cost"][start:end])
-        cum_fuel_cost = np.pad(np.cumsum(fuel_cost), (1, 0), 'constant', constant_values=0)[
-                        :-1]  # Cumulative sum translated to 1 in order to align with cum total cost
-        cum_curtailment_cost = np.pad(np.cumsum(curtailment_cost), (1, 0), 'constant', constant_values=0)[:-1]
-        cum_load_not_served_cost = np.pad(np.cumsum(load_not_served_cost), (1, 0), 'constant', constant_values=0)[:-1]
+        curtailment_cost = np.array(self.results["curtailment"][start:end])
+        load_not_served_cost = np.array(self.results["load_shedding"][start:end])
+        # Cumulative sum translated to 1 in order to align with cum total cost
+
+        cum_fuel_cost = np.cumsum(fuel_cost)
+        cum_curtailment_cost = np.cumsum(curtailment_cost)
+        cum_load_not_served_cost = np.cumsum(load_not_served_cost)
+
         fig = plt.figure(figsize=(16, 9))
 
         ax1 = plt.subplot(2, 1, 1)
@@ -178,13 +180,12 @@ class Plotter:
     def plot_flows(self, start, end):
 
         xticks, xticks_labels = self.get_ticks(start, end)
-
-        exports = np.array(self.results["grid_export"][start:end])
-        imports = np.array(self.results["grid_import"][start:end])
-        net_export = exports - imports
+        exports = self.results["grid_export"][start:end]
+        imports = self.results["grid_import"][start:end]
+        net_export = np.array(exports) - np.array(imports)
 
         productions = self.results["production"][start:end]
-        consumptions = [-x for x in self.results["consumption"]][start:end]
+        consumptions = - np.array(self.results["consumption"][start:end])
 
         fig = plt.figure(figsize=(16, 9))
 
@@ -224,13 +225,13 @@ class Plotter:
         productions = np.array(self.results["production"][start:end])
         non_steerable_productions = np.array(self.results["non_steerable_production"][start:end])
 
-        consumptions = np.array([x for x in self.results["consumption"]][start:end])
+        consumptions = np.array(self.results["consumption"][start:end])
         non_steerable_consumptions = np.array(self.results["non_steerable_consumption"][start:end])
 
-        charge = np.array([sum(x) for x in self.results["charge"][start:end]])
-        discharge = np.array([sum(x) for x in self.results["discharge"][start:end]])
+        charge = np.array(self.results["charge"][start:end])
+        discharge = np.array(self.results["discharge"][start:end])
 
-        generation = np.array([sum(x) for x in self.results["generation"][start:end]])
+        generation = np.array(self.results["generation"][start:end])
 
         fig = plt.figure(figsize=(16, 9))
 
@@ -278,12 +279,12 @@ class Plotter:
         #     f.write(y)
 
     def plot_learning_progress(self):
-
+        return
         fig = plt.figure(figsize=(16, 9))
-        plt.title('Learning progress')
-        plt.plot(range(len(self.results['avg_rewards'])), self.results['avg_rewards'])
+        plt.title("Learning progress")
+        plt.plot(self.results['avg_rewards'])
         if self.savefigs:
-            fig.savefig('%s_learning_progress.pdf' % self.case)
+            fig.savefig(f"{self.case}_learning_progress.pdf")
 
 
 if __name__ == "__main__":
@@ -296,10 +297,9 @@ if __name__ == "__main__":
         folders = arguments
 
     for folder in folders:
-        path = "results/"+folder+"/"
-        for file in [jsonfile for jsonfile in os.listdir("results/"+folder) if jsonfile.endswith('.json')]:
-
-            with open(path+file, "rb") as json_results:
+        path = "results/" + folder + "/"
+        for file in [jsonfile for jsonfile in os.listdir("results/" + folder) if jsonfile.endswith('.json')]:
+            with open(path + file, "rb") as json_results:
                 results = json.load(json_results)
 
                 plotter = Plotter(results, 'results/%s' % file.split("_")[0], savefigs=False)

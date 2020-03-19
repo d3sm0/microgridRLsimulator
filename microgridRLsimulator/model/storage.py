@@ -1,88 +1,112 @@
-from microgridRLsimulator.model.device import Device
-from microgridRLsimulator.simulate import simulator
-from microgridRLsimulator.utils import positive, TOL_IS_ZERO
 import numpy as np
+from microgridRLsimulator.utils import check_type, type_checker
 
-class Storage(Device):
-    def __init__(self, name, params):
-        """
 
-        :param name: Cf. parent class
-        :param params: dictionary of params, must include a capacity value , a max_charge_rate value,
-        a max_discharge_rate value, a charge_efficiency value and a discharge_efficiency value.
-        """
-        super(Storage, self).__init__(name)
+class Storage:
+    storage_type = "Storage"
 
-        self.capacity = None
-        self.max_charge_rate = None
-        self.max_discharge_rate = None
-        self.charge_efficiency = 1.0
-        self.discharge_efficiency = 1.0
+    def __init__(self, params):
+
+        self.name = params['name']
         self.n_cycles = 0
-        for k in params.keys():
-            if k in self.__dict__.keys():
-                self.__setattr__(k, params[k])
+        self.capacity = self.initial_capacity = params['capacity']
+        self.charge_efficiency = params['charge_efficiency']
+        self.discharge_efficiency = params['discharge_efficiency']
 
-        assert (self.capacity is not None)
-        assert (self.max_charge_rate is not None)
-        assert (self.max_discharge_rate is not None)
+    def _simulate(self, soc, charge, discharge, dt):
+        assert charge >= 0 and discharge >= 0 and soc >= 0
+        soc = min(soc, self.capacity)
+        if charge > 0:
+            self.update_cycle(charge * self.charge_efficiency, dt)
+            soc_tp1 = soc + charge * dt * self.charge_efficiency
+            soc_tp1 = min(self.capacity, soc_tp1)
+            charge = (soc_tp1 - soc) / (self.charge_efficiency * dt)
+        elif discharge > 0:
+            self.update_cycle(discharge * self.discharge_efficiency, dt)
+            soc_tp1 = soc - discharge * dt / self.discharge_efficiency
+            soc_tp1 = max(0, soc_tp1)
+            discharge = (soc - soc_tp1) * (self.discharge_efficiency / dt)
+        else:
+            soc_tp1 = soc
+        assert charge >= 0 and discharge >= 0 and soc_tp1 >= 0, f"{charge, discharge, soc_tp1}"
 
-    @staticmethod
-    def type():
-        return "Storage"
+        return soc_tp1, charge, discharge
 
-    def actual_power(self, charge_action, discharge_action):
-        """
+    def update_cycle(self, throughput, dt):
+        raise NotImplementedError("Should be implemented by downstream class")
 
-        :param charge_action: Charge action from a controller
-        :param discharge_action: Discharge action from a controller
-        :return: the actual charge and the actual discharge.
-        """
+    def update_capacity(self):
+        pass
 
-        actual_charge = charge_action
-        actual_discharge = discharge_action
-        # Take care of potential simultaneous charge and discharge.
-        if positive(charge_action) and positive(discharge_action):
-            net = charge_action - discharge_action
-            if net > TOL_IS_ZERO:
-                actual_charge = net
-                actual_discharge = 0.0
-            elif net < -TOL_IS_ZERO:
-                actual_charge = 0
-                actual_discharge = -net
-        return actual_charge, actual_discharge
+    def simulate(self, soc, charge, discharge, dt):
+        check_type((soc, charge, discharge))
+        charge, discharge = _power(charge, discharge)
+        self.update_capacity()
+        assert charge >= 0 and discharge >= 0 and soc >= 0, f"{charge, discharge, soc}"
+        soc_tp1, charge, discharge = self._simulate(soc, charge, discharge, dt)
+        check_type((soc_tp1, charge, discharge))
+        return soc_tp1, charge, discharge
 
-    def update_cycles(self, throughput, deltat):
-        """
+    def reset(self):
+        self.capacity = self.initial_capacity
+        self.n_cycles = 0
 
-        Update the storage number of cycles.
 
-        :param throughput: power charged or discharged, in absolute value [kW]
-        :param deltat: period duration [h]
-        :return: Nothing, updates number of cycles.
-        """
-        self.n_cycles += throughput * deltat / (2 * self.capacity)
+def _power(charge, discharge):
+    assert charge >= 0 and discharge >= 0
+    net = charge - discharge
+    charge = max(0., net)
+    discharge = max(0., -net)
+    return charge, discharge
 
-    def simulate(self, initial_soc, charge_action, discharge_action, deltat):
-        """
 
-        :param initial_soc: initial state of charge of the battery [kWh]
-        :param charge_action: Charge action from a controller [kW]
-        :param discharge_action: Discharge action from a controller [kW]
-        :param deltat : Period duration [h]
-        :return: the next state of charge, the actual charge and the actual discharge.
-        """
+class DCAStorage(Storage):
+    storage_type = "DCAStorage"
 
-        next_soc = initial_soc
-        actual_charge, actual_discharge = self.actual_power(charge_action, discharge_action)
+    def __init__(self, params):
+        super(DCAStorage, self).__init__(params)
+        self.max_charge_rate = params['max_charge_rate']
+        self.max_discharge_rate = params['max_discharge_rate']
+        self.operating_point = params['operating_point']
+        self.max_downtime = params['max_downtime']  # hour
+        self.prob_failure = params['prob_failure']
+        self.is_stochastic = bool(self.prob_failure)
+        self.downtime = 0
 
-        if positive(actual_charge):
-            planned_evolution = initial_soc + actual_charge * deltat * self.charge_efficiency # TODO check action is an energy: action is a power 
-            next_soc = min(self.capacity, planned_evolution)                                  # period duration used to modify it in an energy
-            actual_charge = (next_soc - initial_soc) / (self.charge_efficiency * deltat)
-        elif positive(actual_discharge):
-            planned_evolution = initial_soc - actual_discharge * deltat / self.discharge_efficiency # same for discharge
-            next_soc = max(0, planned_evolution)
-            actual_discharge = (initial_soc - next_soc) * self.discharge_efficiency / deltat
+    def update_capacity(self):
+        if self.capacity > 0:
+            self.capacity = self.initial_capacity + (
+                    self.initial_capacity * (self.operating_point[1] - 1) / self.operating_point[0]) * self.n_cycles
+            self.capacity = max(0, self.capacity)
+        else:
+            self.downtime += 1
+            self.capacity = 0
 
-        return next_soc, actual_charge, actual_discharge
+    def simulate(self, soc, charge, discharge, dt):
+        if self.is_stochastic:
+            self.power_off()
+        next_state = super(DCAStorage, self).simulate(soc, charge, discharge, dt)
+        self.repair()
+        return next_state
+
+    def update_cycle(self, throughput, dt):
+        if self.capacity > 0:
+            self.n_cycles += throughput * dt / (2 * self.capacity)
+
+    def repair(self):
+        if self.downtime == self.max_downtime and self.capacity == 0:
+            self.reset()
+            self.prob_failure = 0.
+
+    def power_off(self):
+        if self.prob_failure > np.random.uniform() and self.capacity > 0:
+            self.capacity = 0
+            self.downtime = 0
+        elif self.capacity > 0:
+            self.prob_failure = min(self.prob_failure + 1 / self.capacity, 1.)
+
+    def max_charge(self):
+        return self.capacity * self.max_charge_rate / 100.
+
+    def max_discharge(self):
+        return self.capacity * self.max_discharge_rate / 100.

@@ -2,30 +2,46 @@
 This demo shows how to create an interact with an environment.
 """
 
-import numpy as np
 from microgridRLsimulator.gym_wrapper import MicrogridEnv
 
 
 # Initialize environment
-env = MicrogridEnv()
+def main():
+    env_init = {
+        "start_date": "2016-01-01",
+        "end_date": "2016-01-31",
+        "case": "elespino"
+    }
 
-# Optional args:
-# env = MicrogridEnv(start_date='20150101T00:00:00', end_date='20150102T00:00:00', data_file='case1',
-#                    decision_horizon=1, results_folder=None, results_file=None)
+    params = {
+        "action_space": "Discrete",
+        "backcast_steps": 0,
+        "forecast_steps": 0,
+        "forecast_type": "exact",
+        "min_stable_generation": 0.,
+        "prob_failure": 0.0
+    }
 
-# Compute cumulative reward of a random policy
-sum_reward = 0
-T = 20
-state = env.reset()
-for tt in range(T):
-    print("state: ", state)
-    action = env.action_space.sample()
-    next_state, reward, done, info = env.step(action)
-    state = next_state
+    import time
+    env = MicrogridEnv(**env_init, params=params)
+    env.seed(0)
+    sum_reward = 0
+    dt = []
+    start = time.perf_counter()
+    state = env.reset()
+    while True:
+        # print("state: ", state)
+        action = env.action_space.sample()
+        next_state, reward, done, info = env.step(action)
+        state = next_state
+        sum_reward += reward
+        if done:
+            dt.append(time.perf_counter() - start)
+            print(sum_reward)
+            break
+    # Store and plot
+    env.render("plots/")
 
-    sum_reward += reward
-    if done:
-        break
 
-# Store and plot
-env.simulator.store_and_plot()
+if __name__ == '__main__':
+    main()

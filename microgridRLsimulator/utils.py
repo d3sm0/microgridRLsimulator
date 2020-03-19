@@ -1,60 +1,40 @@
-from datetime import timedelta, datetime
+import collections
+import json
+from datetime import datetime
+import time
+import os
+
+pkg_dir = os.path.dirname(__file__)
+MICROGRID_CONFIG_FILE = lambda case: os.path.join(pkg_dir, "data", case, f"{case}.json")
+MICROGRID_DATA_FILE = lambda case: os.path.join(pkg_dir, "data", case, f"{case}_dataset.csv")
+RESULT_PATH = lambda case: os.path.join(pkg_dir, "data", case, f"{case}.json")
 
 
-def datetime_range(start, end, delta):
-    current = start
-    if not isinstance(delta, timedelta):
-        delta = timedelta(**delta)
-    while current < end:
-        yield current
-        current += delta
+class Timer:
+    def __init__(self, name):
+        self.name = name
+
+    def __enter__(self):
+        self.start = time.clock()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.end = time.clock()
+        print(f"{self.name}:{self.end - self.start}")
 
 
-# TOL_IS_ZERO = 2.5 * 2e-2
-TOL_IS_ZERO = 1e-5  # A higher tolerance leads to large difference between the optimization problem and simulation
+def type_checker(fn):
+    def _wrap(*args, **kwargs):
+        out = fn(*args, **kwargs)
+        return list(map(out, check_type))
+
+    return _wrap
 
 
-def negative(value, tol=TOL_IS_ZERO):
-    """
-    Check if a value is negative with respect to a tolerance.
-    :param value: Value
-    :param tol: Tolerance.
-    :return: Boolean.
-    """
-    return value < -tol
-
-
-def positive(value, tol=TOL_IS_ZERO):
-    """
-    Check if a value is positive with respect to a tolerance.
-    :param value: Value
-    :param tol: Tolerance.
-    :return: Boolean.
-    """
-    return value > tol
-
-
-def decode_GridState(gridstates, features, n_sequences):
-    """
-
-    :param features: A features dict
-    :param n_sequences: the number of state sequences (backcast)
-    :return a list of the state values
-    """
-    values = list()
-    for gridstate in gridstates:
-        for attr, val in sorted(features.items()):
-            if val:
-                x = getattr(gridstate, attr)
-                if isinstance(x, list):
-                    values += x
-                else:
-                    values.append(x)
-        if gridstate == gridstates[0]:
-            state_alone_size = len(values)
-    n_missing_values = state_alone_size * (n_sequences - len(gridstates))
-    values = n_missing_values * [.0] + values
-    return values
+def check_type(args):
+    import numpy as np
+    for a in args:
+        assert isinstance(a, float) or isinstance(a, int), f"Found instance {type(a)}"
 
 
 def time_string_for_storing_results(name, case):
@@ -63,4 +43,28 @@ def time_string_for_storing_results(name, case):
     :param case: the case name
     :return a string used for file or folder names
     """
-    return name + "_%s_%s" % (case, datetime.now().strftime('%Y-%m-%d_%H%M'))
+    return name + f"_{case}_{datetime.now().strftime('%Y-%m-%d_%H%M')}"
+
+
+def check_json(value):
+    try:
+        json.dumps(value)
+        return True
+    except TypeError:
+        return False
+
+
+def _list_to_dict(info):
+    infos = collections.defaultdict(lambda: [])
+    for _info in info:
+        for k, value in _info.items():
+            value = value if isinstance(value, str) else float(value)
+            assert check_json(value)
+            infos[k].append(value)
+    return dict(infos)
+
+
+def load_config(fname):
+    with open(fname, 'rb') as jsonFile:
+        data = json.load(jsonFile)
+    return data

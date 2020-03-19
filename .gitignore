@@ -1,5 +1,5 @@
 docs/_build
-examples/results
+examples/plots
 models/
 experience_data/
 log/
@@ -19,3 +19,11 @@ results
 microgridRLsimulator.egg-info/
 microgrid_tensorboard/
 /profiling/
+
+__pycache__
+.idea
+.git
+*.egg-info
+*.pyc
+microgridRLsimulator/data/*
+!microgridRLsimulator/data/elespino/
