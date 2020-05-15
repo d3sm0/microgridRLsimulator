@@ -100,10 +100,11 @@ class DCAStorage(Storage):
 
     def power_off(self):
         if self.prob_failure > np.random.uniform() and self.capacity > 0:
-            self.capacity = 0
+            self.capacity = 0 # self.capacity / 2
             self.downtime = 0
         elif self.capacity > 0:
-            self.prob_failure = min(self.prob_failure + 1 / self.capacity, 1.)
+            #dc = (self.capacity/self.initial_capacity)
+            self.prob_failure = min(self.prob_failure + (1 / (10*self.capacity**2)), 1.)
 
     def max_charge(self):
         return self.capacity * self.max_charge_rate / 100.

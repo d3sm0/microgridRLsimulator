@@ -13,7 +13,8 @@ def make_benchmark():
     task.update( {
         "MicroGrid-May-2018-v0":("2018-05-01", "2016-05-28"),
         "MicroGrid-Jul-2018-v0":("2018-07-01", "2016-07-28"),
-        "MicroGrid-Aug-2018-v0":("2018-08-01", "2016-08-28")
+        "MicroGrid-Aug-2018-v0":("2018-08-01", "2016-08-28"),
+        "MicroGrid-Test-v0":("2017-01-01", "2017-04-06")
      })
 
     return task

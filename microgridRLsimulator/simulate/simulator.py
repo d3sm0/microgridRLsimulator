@@ -1,6 +1,5 @@
-import numpy as np
-
 import microgridRLsimulator.simulate.gridaction as gridaction
+import numpy as np
 from microgridRLsimulator.history.database import load_db
 from microgridRLsimulator.model.generator import Diesel, EPV
 from microgridRLsimulator.model.storage import DCAStorage
@@ -67,8 +66,10 @@ class Grid:
 
         if self.action_space_type.lower() == "discrete":
             return len(gridaction.ACTION_LIST)
-        high = np.array([self.storage.max_charge()], np.float32)
-        low = np.array([-self.storage.max_discharge()], np.float32)
+        high = np.array([1, 1], np.float32)
+        low = np.array([-1, -1], np.float32)
+        # high = np.array([self.storage.max_charge()], np.float32)
+        # low = np.array([-self.storage.max_discharge()], np.float32)
         return low, high
 
     def gather_observation_space(self):
@@ -128,6 +129,7 @@ class Simulator:
     def reset(self):
         self.grid.reset()
 
+        self.last_info = self.infos
         self.infos = []
         self.env_step = 0
         self.cost = 0
@@ -186,7 +188,11 @@ class Simulator:
         return self.grid_state.as_numpy(), reward, self._is_terminal(), info
 
     def plot(self, path):
-        infos = _list_to_dict(self.infos)
+        if len(self.last_info) == 0:
+            return
+        if "episode" in self.last_info[-1].keys():
+                self.last_info[-1].pop("episode")
+        infos = _list_to_dict(self.last_info)
         render.store_and_plot(infos, self.env_config, output_path=path)
 
     def _make_info(self, _export, _import, charge, consumption, discharge, production, generation, action):

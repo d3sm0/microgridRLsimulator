@@ -69,6 +69,8 @@ class Plotter:
         if "avg_rewards" in self.results.keys():
             self.plot_learning_progress()
 
+        plt.close('all')
+
     def plot_res(self, start, end):
 
         xticks, xticks_labels = self.get_ticks(start, end)

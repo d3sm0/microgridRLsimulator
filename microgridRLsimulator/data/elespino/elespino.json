@@ -15,7 +15,7 @@
     },
     {
       "name": "Diesel_1",
-      "capacity": 58.0,
+      "capacity": 9.0,
       "steerable": true,
       "min_stable_generation": 0.8,
       "diesel_price": 1,

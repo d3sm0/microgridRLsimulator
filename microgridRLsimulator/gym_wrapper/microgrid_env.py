@@ -16,7 +16,7 @@ import copy
 
 class MicrogridEnv(gym.Env):
 
-    def __init__(self, start_date, end_date, case, purpose="Train", params=None):
+    def __init__(self, start_date, end_date, case,  params=None):
         """
         :param start_date: datetime for the start of the simulation
         :param end_date: datetime for the end of the simulation
@@ -31,7 +31,6 @@ class MicrogridEnv(gym.Env):
         self.state = None
         self.np_random = None
 
-        self.purpose = purpose
         self.seed()
 
     def sample(self):
@@ -64,7 +63,7 @@ class MicrogridEnv(gym.Env):
         May also accept a state as input (useful for MCTS, for instance).
         """
 
-        assert self.action_space.contains(action) or isinstance(action, GridAction)
+        #assert self.action_space.contains(action) or isinstance(action, GridAction)
         self.state, reward, done, info = self.simulator.step(action)
         return self._observation(self.state), reward, done, info
 

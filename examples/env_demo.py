@@ -19,8 +19,7 @@ def main():
         "forecast_steps": 0,
         "forecast_type": "exact",
         "min_stable_generation": 0.,
-        "prob_failure": 0.0
-    }
+        "prob_failure": 0.00    }
 
     import time
     env = MicrogridEnv(**env_init, params=params)
